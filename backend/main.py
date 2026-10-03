@@ -184,76 +184,174 @@ async def join_session(data: dict):
 # WebSocket
 # ---------------------------------------------------------
 
-@app.websocket("/ws/{session_id}/{participant_id}/{token}")
+# @app.websocket("/ws/{session_id}/{participant_id}")
+# async def websocket_endpoint(websocket: WebSocket, session_id: str, participant_id: str):
+
+#     session = sessions.get(session_id)
+
+#     if session is None:
+#         await websocket.close(code=4004)
+#         return
+
+
+#     participant = session.participants.get(
+#         participant_id
+#     )
+
+#     if participant is None:
+#         await websocket.close(code=4003)
+#         return
+
+
+#     if not secrets.compare_digest(
+#         participant.token,
+#         token,
+#     ):
+#         await websocket.close(code=4003)
+#         return
+
+#     # Only two participants allowed.
+#     if len(session.participants) >= 2:
+#         await websocket.close(code=4009)
+#         return
+
+#     await websocket.accept()
+
+#     participant = Participant(
+#         id=participant_id,
+#         websocket=websocket,
+#     )
+
+#     participant.websocket = websocket
+
+#     await websocket.accept()
+#     session.participants[participant_id] = participant
+
+#     try:
+
+#         # Tell everyone how many people are connected.
+#         await broadcast(
+#             session,
+#             {
+#                 "type": "participant_count",
+#                 "count": len(session.participants),
+#             },
+#         )
+
+#         while True:
+
+#             message = await websocket.receive_json()
+
+#             message_type = message.get("type")
+
+#             # ---------------------------------------------
+#             # Location update
+#             # ---------------------------------------------
+
+#             if message_type == "location":
+
+#                 location = {
+#                     "type": "location",
+#                     "participant_id": participant_id,
+#                     "lat": message.get("lat"),
+#                     "lng": message.get("lng"),
+#                     "accuracy": message.get("accuracy"),
+#                 }
+
+#                 await broadcast(
+#                     session,
+#                     location,
+#                     exclude=participant_id,
+#                 )
+
+#     except WebSocketDisconnect:
+
+#         session.participants.pop(
+#             participant_id,
+#             None,
+#         )
+
+#         await broadcast(
+#             session,
+#             {
+#                 "type": "participant_left",
+#                 "participant_id": participant_id,
+#             },
+#         )
+
+#         if not session.participants:
+#             sessions.pop(session_id, None)
+
+@app.websocket("/ws/{session_id}/{participant_id}")
 async def websocket_endpoint(
     websocket: WebSocket,
     session_id: str,
-    participant_id: str,
-    token: str,
+    participant_id: str
 ):
+    print("🔌 WebSocket request received")
+    print("   session_id:", session_id)
+    print("   participant_id:", participant_id)
+    print("   existing sessions:", list(sessions.keys()))
 
     session = sessions.get(session_id)
 
     if session is None:
-        await websocket.close(code=4004)
+        print("❌ SESSION NOT FOUND:", session_id)
+
+        await websocket.accept()
+
+        await websocket.send_json({
+            "type": "error",
+            "message": "Session not found"
+        })
+
+        await websocket.close()
         return
 
+    print("✅ SESSION FOUND")
 
-    participant = session.participants.get(
-        participant_id
-    )
-
-    if participant is None:
-        await websocket.close(code=4003)
-        return
-
-
-    if not secrets.compare_digest(
-        participant.token,
-        token,
-    ):
-        await websocket.close(code=4003)
-        return
-
-    # Only two participants allowed.
     if len(session.participants) >= 2:
-        await websocket.close(code=4009)
+        print("❌ SESSION FULL")
+
+        await websocket.accept()
+
+        await websocket.send_json({
+            "type": "error",
+            "message": "Session already has two participants"
+        })
+
+        await websocket.close()
         return
 
     await websocket.accept()
+
+    print("✅ WebSocket accepted")
 
     participant = Participant(
         id=participant_id,
-        websocket=websocket,
+        websocket=websocket
     )
 
-    participant.websocket = websocket
-
-    await websocket.accept()
     session.participants[participant_id] = participant
 
-    try:
+    print(
+        "👥 Participants:",
+        list(session.participants.keys())
+    )
 
-        # Tell everyone how many people are connected.
+    try:
         await broadcast(
             session,
             {
                 "type": "participant_count",
-                "count": len(session.participants),
-            },
+                "count": len(session.participants)
+            }
         )
 
         while True:
-
             message = await websocket.receive_json()
 
-            message_type = message.get("type")
-
-            # ---------------------------------------------
-            # Location update
-            # ---------------------------------------------
-
-            if message_type == "location":
+            if message.get("type") == "location":
 
                 location = {
                     "type": "location",
@@ -266,27 +364,27 @@ async def websocket_endpoint(
                 await broadcast(
                     session,
                     location,
-                    exclude=participant_id,
+                    exclude=participant_id
                 )
 
     except WebSocketDisconnect:
+        print("👋 Participant disconnected")
 
         session.participants.pop(
             participant_id,
-            None,
+            None
         )
 
         await broadcast(
             session,
             {
                 "type": "participant_left",
-                "participant_id": participant_id,
-            },
+                "participant_id": participant_id
+            }
         )
 
         if not session.participants:
             sessions.pop(session_id, None)
-
 
 # ---------------------------------------------------------
 # Broadcast helper
