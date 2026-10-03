@@ -19,6 +19,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
+        "https://get-out-nine.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
