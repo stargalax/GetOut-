@@ -33,9 +33,7 @@ app.add_middleware(
 @dataclass
 class Participant:
     id: str
-    token: str
-    websocket: WebSocket | None = None
-
+    websocket: WebSocket
 
 @dataclass
 class Session:
