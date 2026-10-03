@@ -92,17 +92,12 @@ function App() {
   // -------------------------------------------------------
 
   async function createSession() {
-
     setError("");
 
     try {
-
-      const response = await fetch(
-        `${API_URL}/sessions`,
-        {
-          method: "POST",
-        }
-      );
+      const response = await fetch(`${API_URL}/sessions`, {
+        method: "POST",
+      });
 
       if (!response.ok) {
         throw new Error("Could not create session.");
@@ -113,18 +108,14 @@ function App() {
       setSessionCode(data.join_code);
       setSessionId(data.session_id);
 
-      // Creator gets their own participant ID.
+      // Creator generates their own participant ID
       const participantId = crypto.randomUUID();
-
-      setParticipantId(data.participant_id);
-      setParticipantToken(data.participant_token);
+      setParticipantId(participantId);
 
       setScreen("waiting");
 
     } catch (error) {
-
       setError(error.message);
-
     }
   }
 
