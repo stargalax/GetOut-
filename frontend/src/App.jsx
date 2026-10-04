@@ -14,6 +14,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
 import { generateSpatialPlanWithQwen } from "./qwen";
+
 // ==================================================
 // LEAFLET ICONS
 // ==================================================
@@ -36,8 +37,57 @@ L.Icon.Default.mergeOptions({
 const API_URL = import.meta.env.VITE_API_URL;
 const WS_URL = API_URL.replace(/^http/, "ws");
 
+const CHECKPOINT_RADIUS_METERS = 50;
+
 // For now we are only implementing Individual Mode.
 const GAME_MODE = "individual";
+
+// ==================================================
+// DISTANCE HELPER
+// ==================================================
+
+const getDistanceMeters = (lat1, lon1, lat2, lon2) => {
+  const R = 6371000;
+
+  const toRad = (value) => (value * Math.PI) / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) *
+    Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) ** 2;
+
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+// ==================================================
+// CHECKPOINT TIME FORMATTER
+// ==================================================
+
+const formatCheckpointTime = (seconds) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(
+    2,
+    "0"
+  )}`;
+};
+
+// ==================================================
+// CHECKPOINT LABEL
+// ==================================================
+
+const getCheckpointLabel = (index, total) => {
+  if (index === total - 1) {
+    return "FINISH";
+  }
+
+  return `CHECKPOINT ${String.fromCharCode(64 + index)}`;
+};
 
 // ==================================================
 // MAP CONTROLLER
@@ -81,146 +131,71 @@ function formatTime(totalSeconds) {
 }
 
 // ==================================================
-// GPS → LOCAL 2D COORDINATES
-// ==================================================
-
-// function gpsToLocal(lat, lng, originLat, originLng) {
-//   const latScale = 111320;
-
-//   const lonScale =
-//     111320 *
-//     Math.cos((originLat * Math.PI) / 180);
-
-//   const x =
-//     (lng - originLng) * lonScale;
-
-//   const y =
-//     (lat - originLat) * latScale;
-
-//   return {
-//     x,
-//     y,
-//   };
-// }
-
-// ==================================================
-// CALCULATE RELATIVE PLAYER CONTEXT
-// ==================================================
-
-// function calculatePlayerContext(playerA, playerB) {
-//   const midLat =
-//     (playerA.lat + playerB.lat) / 2;
-
-//   const midLng =
-//     (playerA.lng + playerB.lng) / 2;
-
-//   const a = gpsToLocal(
-//     playerA.lat,
-//     playerA.lng,
-//     midLat,
-//     midLng
-//   );
-
-//   const b = gpsToLocal(
-//     playerB.lat,
-//     playerB.lng,
-//     midLat,
-//     midLng
-//   );
-
-//   const separation = Math.hypot(
-//     b.x - a.x,
-//     b.y - a.y
-//   );
-
-//   return {
-//     origin: {
-//       lat: midLat,
-//       lon: midLng,
-//     },
-
-//     player_a: {
-//       x_m: Number(a.x.toFixed(2)),
-//       y_m: Number(a.y.toFixed(2)),
-//     },
-
-//     player_b: {
-//       x_m: Number(b.x.toFixed(2)),
-//       y_m: Number(b.y.toFixed(2)),
-//     },
-
-//     separation_m:
-//       Number(separation.toFixed(2)),
-//   };
-// }
-
-
 // APP
+// ==================================================
 
 function App() {
-
+  // ==================================================
   // SESSION STATE
+  // ==================================================
 
   const [screen, setScreen] = useState("home");
 
-  const [isCreator, setIsCreator] =
-    useState(false);
+  const [isCreator, setIsCreator] = useState(false);
 
-  const [joinCode, setJoinCode] =
-    useState("");
+  const [joinCode, setJoinCode] = useState("");
 
-  const [sessionCode, setSessionCode] =
-    useState("");
+  const [sessionCode, setSessionCode] = useState("");
 
-  const [sessionId, setSessionId] =
-    useState("");
+  const [sessionId, setSessionId] = useState("");
 
-  const [participantId, setParticipantId] =
-    useState("");
+  const [participantId, setParticipantId] = useState("");
 
-  const [participantCount, setParticipantCount] =
-    useState(0);
+  const [participantCount, setParticipantCount] = useState(0);
 
-  const [myLocation, setMyLocation] =
-    useState(null);
+  const [myLocation, setMyLocation] = useState(null);
 
-  const [friendLocation, setFriendLocation] =
-    useState(null);
+  const [friendLocation, setFriendLocation] = useState(null);
 
-  const [error, setError] =
-    useState("");
+  const [error, setError] = useState("");
 
-
+  // ==================================================
   // CHALLENGE STATE
+  // ==================================================
 
+  const [challengePrompt, setChallengePrompt] = useState("");
 
-  const [challengePrompt, setChallengePrompt] =
-    useState("");
+  const [travelMode, setTravelMode] = useState("walking");
 
-  const [travelMode, setTravelMode] =
-    useState("walking");
+  const [maxDistance, setMaxDistance] = useState(5);
 
-  const [maxDistance, setMaxDistance] =
-    useState(5);
+  const [maxTime, setMaxTime] = useState(30);
 
-  const [maxTime, setMaxTime] =
-    useState(30);
+  const [challenge, setChallenge] = useState(null);
 
-  const [challenge, setChallenge] =
+  // ==================================================
+  // CHECKPOINT STATE
+  // ==================================================
+
+  const [checkpointState, setCheckpointState] = useState({
+    activeIndex: 1,
+    completed: {},
+    times: {},
+    finished: false,
+  });
+
+  const [distanceToCheckpoint, setDistanceToCheckpoint] =
     useState(null);
 
-
+  // ==================================================
   // INDIVIDUAL MODE STATE
+  // ==================================================
 
+  const [myPath, setMyPath] = useState([]);
 
-  const [myPath, setMyPath] =
-    useState([]);
+  const [friendPath, setFriendPath] = useState([]);
 
-  const [friendPath, setFriendPath] =
-    useState([]);
-
-  const [myStartLocation, setMyStartLocation] =
-    useState(null);
+  const [myStartLocation, setMyStartLocation] = useState(null);
 
   const [friendStartLocation, setFriendStartLocation] =
     useState(null);
@@ -228,33 +203,121 @@ function App() {
   const [challengeStartedAt, setChallengeStartedAt] =
     useState(null);
 
-  const [elapsedSeconds, setElapsedSeconds] =
-    useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-
+  // ==================================================
   // ROUTE STATE
-
+  // ==================================================
 
   const socketRef = useRef(null);
 
   const watchIdRef = useRef(null);
 
-  const pendingChallengeRef =
-    useRef(null);
+  const pendingChallengeRef = useRef(null);
 
-  const [plannedRoute, setPlannedRoute] =
-    useState(null);
+  const [plannedRoute, setPlannedRoute] = useState(null);
 
-  const routeRequestedRef =
-    useRef(false);
+  const routeRequestedRef = useRef(false);
 
-  const [routeGenerating, setRouteGenerating] =
-    useState(false);
+  const [routeGenerating, setRouteGenerating] = useState(false);
+
   const [routesReady, setRoutesReady] = useState(false);
 
   const [routeAttempt, setRouteAttempt] = useState(0);
-  // TIMER
 
+  // ==================================================
+  // CHECKPOINT DERIVED DATA
+  // IMPORTANT: INSIDE APP()
+  // ==================================================
+
+  const myRoute = isCreator
+    ? plannedRoute?.player_a
+    : plannedRoute?.player_b;
+
+  const checkpointWaypoints = myRoute?.waypoints || [];
+
+  const activeCheckpoint =
+    checkpointWaypoints[checkpointState.activeIndex] || null;
+
+  let isNearCheckpoint = false;
+
+  if (myLocation && activeCheckpoint) {
+    const [checkpointLat, checkpointLng] = activeCheckpoint;
+
+    const distance = getDistanceMeters(
+      myLocation.lat,
+      myLocation.lng,
+      checkpointLat,
+      checkpointLng
+    );
+
+    isNearCheckpoint =
+      distance <= CHECKPOINT_RADIUS_METERS;
+  }
+
+  // ==================================================
+  // CHECKPOINT CHECK-IN
+  // ==================================================
+
+  const handleCheckpointCheckIn = () => {
+    if (
+      !myLocation ||
+      !activeCheckpoint ||
+      !challengeStartedAt
+    ) {
+      return;
+    }
+
+    const [checkpointLat, checkpointLng] =
+      activeCheckpoint;
+
+    const distance = getDistanceMeters(
+      myLocation.lat,
+      myLocation.lng,
+      checkpointLat,
+      checkpointLng
+    );
+
+    // Don't allow check-in unless nearby.
+    if (distance > CHECKPOINT_RADIUS_METERS) {
+      return;
+    }
+
+    const elapsed = Math.floor(
+      (Date.now() - challengeStartedAt) / 1000
+    );
+
+    const currentIndex =
+      checkpointState.activeIndex;
+
+    setCheckpointState((prev) => ({
+      ...prev,
+
+      completed: {
+        ...prev.completed,
+        [currentIndex]: true,
+      },
+
+      times: {
+        ...prev.times,
+        [currentIndex]: elapsed,
+      },
+
+      activeIndex:
+        currentIndex <
+          checkpointWaypoints.length - 1
+          ? currentIndex + 1
+          : currentIndex,
+
+      finished:
+        currentIndex ===
+        checkpointWaypoints.length - 1,
+    }));
+  };
+
+  // ==================================================
+  // TIMER
+  // ==================================================
 
   useEffect(() => {
     if (!challengeStartedAt) {
@@ -274,13 +337,39 @@ function App() {
     };
   }, [challengeStartedAt]);
 
+  // ==================================================
+  // CHECKPOINT DISTANCE
+  // IMPORTANT: TOP-LEVEL HOOK
+  // NOT INSIDE ANOTHER EFFECT
+  // ==================================================
 
+  useEffect(() => {
+    if (!myLocation || !activeCheckpoint) {
+      setDistanceToCheckpoint(null);
+      return;
+    }
+
+    const [checkpointLat, checkpointLng] =
+      activeCheckpoint;
+
+    const distance = getDistanceMeters(
+      myLocation.lat,
+      myLocation.lng,
+      checkpointLat,
+      checkpointLng
+    );
+
+    setDistanceToCheckpoint(Math.round(distance));
+  }, [myLocation, activeCheckpoint]);
+
+  // ==================================================
   // RESET CHALLENGE
-
+  // ==================================================
 
   function resetChallengeTracking() {
     setMyPath([]);
     setFriendPath([]);
+
     setMyLocation(null);
     setFriendLocation(null);
 
@@ -294,10 +383,22 @@ function App() {
     setRoutesReady(false);
     setRouteGenerating(false);
 
+    // Reset checkpoints
+    setCheckpointState({
+      activeIndex: 1,
+      completed: {},
+      times: {},
+      finished: false,
+    });
+
+    setDistanceToCheckpoint(null);
+
     routeRequestedRef.current = false;
   }
-  // BEGIN CHALLENGE
 
+  // ==================================================
+  // BEGIN CHALLENGE
+  // ==================================================
 
   function beginChallenge(challengeData) {
     setChallenge(challengeData);
@@ -308,12 +409,13 @@ function App() {
 
     setScreen("session");
 
-    // ❌ NO TIMER HERE
+    // Timer intentionally does NOT start here.
+    // It starts when route_created is received.
   }
 
-
+  // ==================================================
   // CREATE SESSION
-
+  // ==================================================
 
   async function createSession() {
     try {
@@ -332,8 +434,7 @@ function App() {
         );
       }
 
-      const data =
-        await response.json();
+      const data = await response.json();
 
       const newParticipantId =
         crypto.randomUUID();
@@ -344,7 +445,6 @@ function App() {
 
       setIsCreator(true);
       setScreen("waiting");
-
     } catch (err) {
       console.error(err);
 
@@ -354,19 +454,23 @@ function App() {
     }
   }
 
-
+  // ==================================================
   // JOIN SESSION
-
+  // ==================================================
 
   async function joinSession() {
-    // Don't join twice
     if (sessionId) {
       return;
     }
 
     try {
       setError("");
-      console.log("JOIN CODE INPUT:", joinCode);
+
+      console.log(
+        "JOIN CODE INPUT:",
+        joinCode
+      );
+
       const cleanCode =
         joinCode.trim().toUpperCase();
 
@@ -374,6 +478,7 @@ function App() {
         setError(
           "Enter a valid 6-character join code."
         );
+
         return;
       }
 
@@ -387,7 +492,8 @@ function App() {
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           },
           body: JSON.stringify({
             join_code: cleanCode,
@@ -405,8 +511,13 @@ function App() {
       }
 
       setSessionId(data.session_id);
-      setParticipantId(data.participant_id);
+
+      setParticipantId(
+        data.participant_id
+      );
+
       setSessionCode(cleanCode);
+
       setIsCreator(false);
 
       if (data.challenge) {
@@ -414,7 +525,6 @@ function App() {
       }
 
       setScreen("waiting");
-
     } catch (err) {
       console.error(err);
 
@@ -425,8 +535,9 @@ function App() {
     }
   }
 
+  // ==================================================
   // START LOCATION TRACKING
-
+  // ==================================================
 
   function startLocationTracking() {
     if (!navigator.geolocation) {
@@ -445,12 +556,8 @@ function App() {
       navigator.geolocation.watchPosition(
         (position) => {
           const location = {
-            lat:
-              position.coords.latitude,
-
-            lng:
-              position.coords.longitude,
-
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
             accuracy:
               position.coords.accuracy,
           };
@@ -538,9 +645,9 @@ function App() {
       );
   }
 
-
+  // ==================================================
   // STOP LOCATION TRACKING
-
+  // ==================================================
 
   function stopLocationTracking() {
     if (watchIdRef.current !== null) {
@@ -552,9 +659,169 @@ function App() {
     }
   }
 
+  // ==================================================
+  // ROUTE GENERATION
+  //
+  // QWEN RUNS LOCALLY IN CREATOR'S BROWSER.
+  // FASTAPI ONLY RECEIVES THE SPATIAL PLAN.
+  // ==================================================
 
+  useEffect(() => {
+    if (screen !== "session") {
+      return;
+    }
+
+    if (!isCreator) {
+      return;
+    }
+
+    if (!myLocation || !friendLocation) {
+      return;
+    }
+
+    if (!challenge) {
+      return;
+    }
+
+    if (routeRequestedRef.current) {
+      return;
+    }
+
+    if (
+      !socketRef.current ||
+      socketRef.current.readyState !==
+      WebSocket.OPEN
+    ) {
+      return;
+    }
+
+    routeRequestedRef.current = true;
+
+    async function generateRoute() {
+      try {
+        setRouteGenerating(true);
+        setError("");
+
+        // ------------------------------------------
+        // 1. PLAYER LOCATIONS
+        // ------------------------------------------
+
+        const playerA = {
+          lat: myLocation.lat,
+          lng: myLocation.lng,
+        };
+
+        const playerB = {
+          lat: friendLocation.lat,
+          lng: friendLocation.lng,
+        };
+
+        // ------------------------------------------
+        // 2. RUN QWEN LOCALLY
+        // ------------------------------------------
+
+        console.log(
+          "🤖 Generating spatial plan locally..."
+        );
+
+        const spatialPlan =
+          await generateSpatialPlanWithQwen({
+            prompt: challenge.prompt,
+
+            travelMode:
+              challenge.mode,
+
+            maxDistanceKm:
+              challenge.maxDistanceKm,
+
+            maxTimeMinutes:
+              challenge.maxTimeMinutes,
+
+            onProgress: (progress) => {
+              if (
+                progress?.status ===
+                "progress"
+              ) {
+                console.log(
+                  `🤖 Loading Qwen: ${Math.round(
+                    progress.progress || 0
+                  )}%`
+                );
+              }
+            },
+          });
+
+        console.log(
+          "🧠 Qwen spatial plan:",
+          spatialPlan
+        );
+
+        // ------------------------------------------
+        // 3. MAKE SURE WEBSOCKET IS STILL OPEN
+        // ------------------------------------------
+
+        if (
+          !socketRef.current ||
+          socketRef.current.readyState !==
+          WebSocket.OPEN
+        ) {
+          throw new Error(
+            "WebSocket disconnected before route generation."
+          );
+        }
+
+        // ------------------------------------------
+        // 4. SEND SPATIAL PLAN TO FASTAPI
+        // ------------------------------------------
+
+        socketRef.current.send(
+          JSON.stringify({
+            type: "generate_route",
+
+            players: [
+              playerA,
+              playerB,
+            ],
+
+            spatial_plan:
+              spatialPlan,
+          })
+        );
+
+        console.log(
+          "🗺️ Spatial plan sent to backend."
+        );
+      } catch (err) {
+        console.error(
+          "❌ Route generation failed:",
+          err
+        );
+
+        setError(
+          err?.message ||
+          "Could not generate route."
+        );
+
+        setRouteGenerating(false);
+
+        // Allow retry
+        routeRequestedRef.current = false;
+      }
+    }
+
+    generateRoute();
+  }, [
+    screen,
+    isCreator,
+    myLocation,
+    friendLocation,
+    challenge,
+    routeAttempt,
+  ]);
+
+  // ==================================================
   // WEBSOCKET
-
+  // ==================================================
 
   useEffect(() => {
     if (!sessionId || !participantId) {
@@ -711,11 +978,15 @@ function App() {
 
           return;
         }
+
         // ------------------------------------------
         // ROUTE CREATED
         // ------------------------------------------
 
-        if (message.type === "route_created") {
+        if (
+          message.type ===
+          "route_created"
+        ) {
           console.log(
             "🗺️ BOTH routes received:",
             message.route
@@ -731,16 +1002,34 @@ function App() {
             message.route?.player_b
           );
 
-          setPlannedRoute(message.route);
+          setPlannedRoute(
+            message.route
+          );
+
           setRouteGenerating(false);
+
           setRoutesReady(true);
 
           // Timer starts once both routes are ready
           setElapsedSeconds(0);
-          setChallengeStartedAt(Date.now());
+
+          setChallengeStartedAt(
+            Date.now()
+          );
+
+          // Reset checkpoints
+          setCheckpointState({
+            activeIndex: 1,
+            completed: {},
+            times: {},
+            finished: false,
+          });
+
+          setDistanceToCheckpoint(null);
 
           return;
         }
+
         // ------------------------------------------
         // FRIEND LEFT
         // ------------------------------------------
@@ -787,7 +1076,6 @@ function App() {
 
           return;
         }
-
       } catch (err) {
         console.error(
           "WebSocket message error:",
@@ -815,168 +1103,9 @@ function App() {
     };
   }, [sessionId, participantId]);
 
-  // ------------------------------------------
-  // GENERATE ROUTE
-  //
-  // QWEN RUNS LOCALLY IN THE CREATOR'S BROWSER.
-  //
-  // FastAPI ONLY RECEIVES THE SPATIAL PLAN.
-  // ------------------------------------------
-
-  useEffect(() => {
-    if (screen !== "session") {
-      return;
-    }
-
-    if (!isCreator) {
-      return;
-    }
-
-    if (!myLocation || !friendLocation) {
-      return;
-    }
-
-    if (!challenge) {
-      return;
-    }
-
-    if (routeRequestedRef.current) {
-      return;
-    }
-
-    if (
-      !socketRef.current ||
-      socketRef.current.readyState !== WebSocket.OPEN
-    ) {
-      return;
-    }
-
-    routeRequestedRef.current = true;
-
-    async function generateRoute() {
-      try {
-        setRouteGenerating(true);
-        setError("");
-
-        // ------------------------------------------
-        // 1. PLAYER LOCATIONS
-        // ------------------------------------------
-
-        const playerA = {
-          lat: myLocation.lat,
-          lng: myLocation.lng,
-        };
-
-        const playerB = {
-          lat: friendLocation.lat,
-          lng: friendLocation.lng,
-        };
-
-        // ------------------------------------------
-        // 2. CALCULATE RELATIVE POSITIONS
-        // ------------------------------------------
-
-        // const playerContext =
-        //   calculatePlayerContext(
-        //     playerA,
-        //     playerB
-        //   );
-
-        // console.log(
-        //   "📍 Player context:",
-        //   playerContext
-        // );
-
-        // ------------------------------------------
-        // 3. RUN QWEN LOCALLY
-        // ------------------------------------------
-
-        console.log(
-          "🤖 Generating spatial plan locally..."
-        );
-        const spatialPlan = await generateSpatialPlanWithQwen({
-          prompt: challenge.prompt,
-          travelMode: challenge.mode,
-          maxDistanceKm: challenge.maxDistanceKm,
-          maxTimeMinutes: challenge.maxTimeMinutes,
-          onProgress: (progress) => {
-            if (progress?.status === "progress") {
-              console.log(`🤖 Loading Qwen: ${Math.round(progress.progress || 0)}%`);
-            }
-          },
-        });
-
-        console.log(
-          "🧠 Qwen spatial plan:",
-          spatialPlan
-        );
-
-        // ------------------------------------------
-        // 4. MAKE SURE WEBSOCKET IS STILL OPEN
-        // ------------------------------------------
-
-        if (
-          !socketRef.current ||
-          socketRef.current.readyState !==
-          WebSocket.OPEN
-        ) {
-          throw new Error(
-            "WebSocket disconnected before route generation."
-          );
-        }
-
-        // ------------------------------------------
-        // 5. SEND SPATIAL PLAN TO FASTAPI
-        // ------------------------------------------
-
-        socketRef.current.send(
-          JSON.stringify({
-            type: "generate_route",
-
-            players: [
-              playerA,
-              playerB,
-            ],
-
-            spatial_plan: spatialPlan,
-          })
-        );
-
-        console.log(
-          "🗺️ Spatial plan sent to backend."
-        );
-
-      } catch (err) {
-        console.error(
-          "❌ Route generation failed:",
-          err
-        );
-
-        setError(
-          err?.message ||
-          "Could not generate route."
-        );
-
-        setRouteGenerating(false);
-
-        // Allow retry
-        routeRequestedRef.current = false;
-      }
-    }
-
-    generateRoute();
-
-  }, [
-    screen,
-    isCreator,
-    myLocation,
-    friendLocation,
-    challenge, routeAttempt
-  ]);
-
-
+  // ==================================================
   // CREATE CHALLENGE
-
+  // ==================================================
 
   function createChallenge() {
     setError("");
@@ -1029,9 +1158,9 @@ function App() {
     }
   }
 
-
+  // ==================================================
   // START CHALLENGE
-
+  // ==================================================
 
   function startChallenge() {
     setError("");
@@ -1071,15 +1200,14 @@ function App() {
     );
   }
 
-
+  // ==================================================
   // HOME SCREEN
-
+  // ==================================================
 
   if (screen === "home") {
     return (
       <div className="app">
         <div className="home-container">
-
           <h1>SyncWalk</h1>
 
           <p>
@@ -1122,21 +1250,19 @@ function App() {
           >
             Join Session
           </button>
-
         </div>
       </div>
     );
   }
 
-
+  // ==================================================
   // WAITING SCREEN
-
+  // ==================================================
 
   if (screen === "waiting") {
     return (
       <div className="app">
         <div className="waiting-container">
-
           <h1>SyncWalk</h1>
 
           <p>
@@ -1162,7 +1288,6 @@ function App() {
           {isCreator &&
             !challenge && (
               <div className="challenge-form">
-
                 <h2>
                   Create your challenge
                 </h2>
@@ -1232,11 +1357,12 @@ function App() {
                 />
 
                 <button
-                  onClick={createChallenge}
+                  onClick={
+                    createChallenge
+                  }
                 >
                   Create Challenge
                 </button>
-
               </div>
             )}
 
@@ -1245,7 +1371,6 @@ function App() {
           {isCreator &&
             challenge && (
               <div className="challenge-preview">
-
                 <h2>
                   Challenge Ready 🎯
                 </h2>
@@ -1263,7 +1388,8 @@ function App() {
 
                 <p>
                   📏 Max distance:{" "}
-                  {challenge.maxDistanceKm} km
+                  {challenge.maxDistanceKm}{" "}
+                  km
                 </p>
 
                 <p>
@@ -1299,7 +1425,9 @@ function App() {
 
                 {participantCount >= 2 ? (
                   <button
-                    onClick={startChallenge}
+                    onClick={
+                      startChallenge
+                    }
                   >
                     Start Challenge
                   </button>
@@ -1309,7 +1437,6 @@ function App() {
                     to join...
                   </p>
                 )}
-
               </div>
             )}
 
@@ -1317,7 +1444,6 @@ function App() {
 
           {!isCreator && (
             <div className="challenge-preview">
-
               {!challenge && (
                 <>
                   <h2>
@@ -1386,28 +1512,24 @@ function App() {
                   </p>
                 </>
               )}
-
             </div>
           )}
-
         </div>
       </div>
     );
   }
 
-
+  // ==================================================
   // SESSION / MAP SCREEN
+  // ==================================================
 
+  const myPlannedRoute = isCreator
+    ? plannedRoute?.player_a
+    : plannedRoute?.player_b;
 
-  const myPlannedRoute =
-    isCreator
-      ? plannedRoute?.player_a
-      : plannedRoute?.player_b;
-
-  const friendPlannedRoute =
-    isCreator
-      ? plannedRoute?.player_b
-      : plannedRoute?.player_a;
+  const friendPlannedRoute = isCreator
+    ? plannedRoute?.player_b
+    : plannedRoute?.player_a;
 
   return (
     <div className="app">
@@ -1415,7 +1537,6 @@ function App() {
       {/* HEADER */}
 
       <div className="session-header">
-
         <div>
           <h1>
             SyncWalk
@@ -1431,14 +1552,12 @@ function App() {
             👥 {participantCount}/2
           </span>
         </div>
-
       </div>
 
       {/* CHALLENGE INFO */}
 
       {challenge && (
         <div className="challenge-bar">
-
           <div>
             🎯 {challenge.prompt}
           </div>
@@ -1456,16 +1575,15 @@ function App() {
 
           <div>
             📏{" "}
-            {challenge.maxDistanceKm} km
+            {challenge.maxDistanceKm}{" "}
+            km
           </div>
-
         </div>
       )}
 
       {/* TIMER */}
 
       <div className="challenge-timer">
-
         <span>
           ⏱️{" "}
           {formatTime(
@@ -1484,18 +1602,20 @@ function App() {
             )}
           </span>
         )}
-
       </div>
 
       {/* ROUTE GENERATING */}
 
       {routeGenerating && (
         <div className="route-generating">
-          🤖 AI is planning your route locally...
+          🤖 AI is planning your route
+          locally...
           <br />
+
           <small>
-            Your browser is running Qwen locally.
-            The first run may take a little longer.
+            Your browser is running Qwen
+            locally. The first run may
+            take a little longer.
           </small>
         </div>
       )}
@@ -1513,7 +1633,6 @@ function App() {
           width: "100%",
         }}
       >
-
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -1521,7 +1640,9 @@ function App() {
 
         <MapController
           myLocation={myLocation}
-          friendLocation={friendLocation}
+          friendLocation={
+            friendLocation
+          }
         />
 
         {/* MY MARKER */}
@@ -1542,7 +1663,8 @@ function App() {
 
               Accuracy:{" "}
               {Math.round(
-                myLocation.accuracy || 0
+                myLocation.accuracy ||
+                0
               )}
               m
             </Popup>
@@ -1559,7 +1681,6 @@ function App() {
             ]}
           >
             <Popup>
-
               <strong>
                 Your Friend
               </strong>
@@ -1572,7 +1693,6 @@ function App() {
                 0
               )}
               m
-
             </Popup>
           </Marker>
         )}
@@ -1647,8 +1767,8 @@ function App() {
 
         {/* MY PLANNED ROUTE */}
 
-        {myPlannedRoute?.points?.length >
-          1 && (
+        {myPlannedRoute?.points
+          ?.length > 1 && (
             <Polyline
               positions={
                 myPlannedRoute.points
@@ -1677,13 +1797,90 @@ function App() {
             />
           )}
 
+        {/* CHECKPOINT MARKERS */}
+
+        {checkpointWaypoints.map(
+          (point, index) => {
+            // Don't show starting point
+            // as a checkpoint.
+            if (index === 0) {
+              return null;
+            }
+
+            const [lat, lng] = point;
+
+            const completed =
+              checkpointState
+                .completed[index];
+
+            const active =
+              checkpointState
+                .activeIndex ===
+              index;
+
+            return (
+              <Marker
+                key={`checkpoint-${index}`}
+                position={[
+                  lat,
+                  lng,
+                ]}
+              >
+                <Popup>
+                  <div
+                    style={{
+                      textAlign:
+                        "center",
+                      minWidth:
+                        "150px",
+                    }}
+                  >
+                    <strong>
+                      {index ===
+                        checkpointWaypoints.length -
+                        1
+                        ? "🏁 FINISH"
+                        : `🎯 CHECKPOINT ${String.fromCharCode(
+                          64 + index
+                        )}`}
+                    </strong>
+
+                    <br />
+
+                    {completed ? (
+                      <span>
+                        ✅ Completed
+                        <br />
+                        ⏱{" "}
+                        {formatCheckpointTime(
+                          checkpointState
+                            .times[
+                          index
+                          ]
+                        )}
+                      </span>
+                    ) : active ? (
+                      <span>
+                        📍 Next
+                        checkpoint
+                      </span>
+                    ) : (
+                      <span>
+                        🔒 Locked
+                      </span>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          }
+        )}
       </MapContainer>
 
       {/* ROUTE INFO */}
 
       {plannedRoute && (
         <div className="route-info">
-
           <div>
             🧠 AI shape:{" "}
             {
@@ -1710,14 +1907,186 @@ function App() {
             }{" "}
             km
           </div>
-
         </div>
       )}
+
+      {/* CHECKPOINT STATUS */}
+
+      {checkpointWaypoints.length >
+        1 && (
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "14px",
+              borderRadius: "14px",
+              background: "#f8f9ff",
+              border:
+                "1px solid #e4e7f5",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: "16px",
+                marginBottom: "10px",
+              }}
+            >
+              🎯 Challenge Checkpoints
+            </div>
+
+            {checkpointWaypoints
+              .slice(1)
+              .map((_, i) => {
+                const index = i + 1;
+
+                const completed =
+                  checkpointState
+                    .completed[index];
+
+                const active =
+                  checkpointState
+                    .activeIndex ===
+                  index;
+
+                const label =
+                  index ===
+                    checkpointWaypoints.length -
+                    1
+                    ? "🏁 Finish"
+                    : `🔵 Checkpoint ${String.fromCharCode(
+                      64 + index
+                    )}`;
+
+                return (
+                  <div
+                    key={`checkpoint-status-${index}`}
+                    style={{
+                      display: "flex",
+                      alignItems:
+                        "center",
+                      justifyContent:
+                        "space-between",
+                      padding: "8px 0",
+                      borderBottom:
+                        index <
+                          checkpointWaypoints.length -
+                          1
+                          ? "1px solid #eee"
+                          : "none",
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          fontWeight:
+                            active ||
+                              completed
+                              ? 600
+                              : 400,
+                        }}
+                      >
+                        {completed
+                          ? "✅"
+                          : active
+                            ? "📍"
+                            : "🔒"}{" "}
+                        {label}
+                      </div>
+
+                      {completed && (
+                        <div
+                          style={{
+                            fontSize:
+                              "12px",
+                            color:
+                              "#666",
+                            marginTop:
+                              "2px",
+                          }}
+                        >
+                          ⏱{" "}
+                          {formatCheckpointTime(
+                            checkpointState
+                              .times[
+                            index
+                            ]
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {active &&
+                      !completed && (
+                        <span
+                          style={{
+                            fontSize:
+                              "12px",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {distanceToCheckpoint !==
+                            null
+                            ? `${distanceToCheckpoint} m away`
+                            : "Locating..."}
+                        </span>
+                      )}
+                  </div>
+                );
+              })}
+
+            {/* CHECK IN BUTTON */}
+
+            {!checkpointState.finished &&
+              activeCheckpoint &&
+              isNearCheckpoint && (
+                <button
+                  type="button"
+                  onClick={
+                    handleCheckpointCheckIn
+                  }
+                  style={{
+                    width: "100%",
+                    marginTop:
+                      "12px",
+                    padding: "12px",
+                    border: "none",
+                    borderRadius:
+                      "10px",
+                    cursor:
+                      "pointer",
+                    fontWeight: 700,
+                    fontSize:
+                      "15px",
+                  }}
+                >
+                  📍 CHECK IN
+                </button>
+              )}
+
+            {/* FINISHED */}
+
+            {checkpointState.finished && (
+              <div
+                style={{
+                  marginTop:
+                    "12px",
+                  padding: "12px",
+                  borderRadius:
+                    "10px",
+                  textAlign:
+                    "center",
+                  fontWeight: 700,
+                }}
+              >
+                🎉 Challenge Complete!
+              </div>
+            )}
+          </div>
+        )}
 
       {/* STATUS */}
 
       <div className="session-status">
-
         <p>
           📍 Your points:{" "}
           {myPath.length}
@@ -1749,7 +2118,6 @@ function App() {
             location...
           </p>
         )}
-
       </div>
 
       {error && (
@@ -1757,7 +2125,6 @@ function App() {
           {error}
         </div>
       )}
-
     </div>
   );
 }
