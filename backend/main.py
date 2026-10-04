@@ -12,6 +12,7 @@ import httpx
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
+import asyncio
 
 app = FastAPI(title="GetOut!")
 
@@ -38,9 +39,8 @@ app.add_middleware(
 
 VALHALLA_URL = os.getenv(
     "VALHALLA_URL",
-    "https://valhalla.openstreetmap.de/route"
+    "https://valhalla1.openstreetmap.de/route"
 )
-
 
 # ============================================================
 # GEOGRAPHIC HELPERS
@@ -248,8 +248,30 @@ def extract_json(text):
 # ============================================================
 # VALIDATE QWEN PLAN
 # ============================================================
+# ============================================================
+# VALIDATE + NORMALIZE QWEN SPATIAL PLAN
+# ============================================================
 
-def validate_spatial_plan(plan: dict):
+def normalize_spatial_plan(plan: dict):
+    """
+    Normalize the Qwen shape into:
+
+        points = [
+            [x, y],
+            [x, y],
+            ...
+            [x, y]   # same as first point
+        ]
+
+    IMPORTANT:
+    The FIRST point represents the player's actual starting location.
+
+    The shape is translated so the first vertex becomes (0, 0).
+
+    The last point is forced to be (0, 0), so the route closes
+    back at the player's actual starting GPS position.
+    """
+
     if not isinstance(plan, dict):
         raise ValueError("Spatial plan must be an object.")
 
@@ -258,24 +280,37 @@ def validate_spatial_plan(plan: dict):
     if not isinstance(shape_name, str) or not shape_name.strip():
         raise ValueError("Spatial plan is missing shape_name.")
 
-    points = plan.get("points")
+    raw_points = plan.get("points")
 
-    if not isinstance(points, list):
+    if not isinstance(raw_points, list):
         raise ValueError("Spatial plan is missing points.")
 
-    if not 6 <= len(points) <= 30:
+    # A triangle needs at least 3 vertices.
+    if not 3 <= len(raw_points) <= 30:
         raise ValueError(
-            "Spatial plan must contain between 6 and 30 points."
+            "Spatial plan must contain between 3 and 30 points."
         )
 
-    for point in points:
-        if (
-            not isinstance(point, (list, tuple))
-            or len(point) != 2
-        ):
-            raise ValueError("Each point must contain x and y.")
+    points = []
 
-        x, y = point
+    for point in raw_points:
+
+        # Support:
+        # [x, y]
+        if isinstance(point, (list, tuple)) and len(point) == 2:
+            x = point[0]
+            y = point[1]
+
+        # Also support:
+        # {"x": x, "y": y}
+        elif isinstance(point, dict):
+            x = point.get("x")
+            y = point.get("y")
+
+        else:
+            raise ValueError(
+                "Each point must contain x and y."
+            )
 
         if not isinstance(x, (int, float)):
             raise ValueError("Invalid x coordinate.")
@@ -284,117 +319,132 @@ def validate_spatial_plan(plan: dict):
             raise ValueError("Invalid y coordinate.")
 
         if not math.isfinite(x) or not math.isfinite(y):
-            raise ValueError("Coordinates must be finite.")
+            raise ValueError(
+                "Coordinates must be finite."
+            )
 
-        if not -1.0 <= x <= 1.0:
-            raise ValueError("x must be between -1 and 1.")
+        if abs(float(x)) > 100 or abs(float(y)) > 100:
+            raise ValueError("Coordinates are unreasonably large.")
+        points.append([
+            float(x),
+            float(y),
+        ])
 
-        if not -1.0 <= y <= 1.0:
-            raise ValueError("y must be between -1 and 1.")
+    # --------------------------------------------------------
+    # FIRST QWEN POINT = START VERTEX
+    # --------------------------------------------------------
 
-    rotation = plan.get("rotation_degrees", 0)
+    start_x, start_y = points[0]
 
-    if not isinstance(rotation, (int, float)):
-        raise ValueError("Invalid rotation.")
+    # Translate the entire shape so the FIRST vertex
+    # becomes exactly (0, 0).
+    anchored_points = [
+        [
+            x - start_x,
+            y - start_y,
+        ]
+        for x, y in points
+    ]
 
-    return True
+    # --------------------------------------------------------
+    # REMOVE accidental duplicate consecutive points
+    # --------------------------------------------------------
 
+    cleaned = [anchored_points[0]]
+
+    for point in anchored_points[1:]:
+        previous = cleaned[-1]
+
+        if (
+            abs(point[0] - previous[0]) > 1e-9
+            or abs(point[1] - previous[1]) > 1e-9
+        ):
+            cleaned.append(point)
+
+    if len(cleaned) < 3:
+        raise ValueError(
+            "Spatial plan does not contain enough distinct vertices."
+        )
+
+    # --------------------------------------------------------
+    # CLOSE THE SHAPE
+    # --------------------------------------------------------
+
+    # The last point MUST be the starting point.
+    if (
+        abs(cleaned[-1][0]) > 1e-9
+        or abs(cleaned[-1][1]) > 1e-9
+    ):
+        cleaned.append([0.0, 0.0])
+
+    normalized_plan = {
+        "shape_name": shape_name.strip(),
+        "title": str(plan.get("title") or "")[:60],
+        "points": cleaned,
+        "rotation_degrees": float(plan.get("rotation_degrees", 0)),
+        "target_perimeter_m": float(plan.get("target_perimeter_m") or 0) or None,
+        "budget_km": float(plan.get("budget_km") or 0) or None,
+        "pace": plan.get("pace"),
+        "size": plan.get("size"),
+    }
+
+    return normalized_plan
+
+
+def validate_spatial_plan(plan: dict):
+    """
+    Validate and normalize the Qwen plan.
+    """
+
+    normalized = normalize_spatial_plan(plan)
+
+    return normalized
 # ============================================================
 # ROTATE + SCALE QWEN SHAPE
 # ============================================================
 
 def transform_shape(
     points,
-    max_distance_km,
+    target_distance_m,
     rotation_degrees,
 ):
     """
-    Convert Qwen's normalized shape into
-    a real-world local-meter shape.
+    Scale a normalized shape so its straight-line perimeter
+    equals target_distance_m, then rotate it.
 
-    We intentionally use only a fraction of the
-    maximum allowed distance because road routing
-    can make the final route longer.
+    points[0] and points[-1] are always [0, 0] (the player's start).
     """
 
-    raw_points = [
-        (
-            float(point["x"]),
-            float(point["y"]),
-        )
-        for point in points
-    ]
+    raw_points = [(float(p[0]), float(p[1])) for p in points]
 
-    # --------------------------------------------------------
-    # Calculate normalized perimeter.
-    # --------------------------------------------------------
+    if len(raw_points) < 3:
+        raise ValueError("Shape requires at least 3 points.")
 
-    perimeter = 0
-
+    perimeter = 0.0
     for i in range(len(raw_points) - 1):
-
         x1, y1 = raw_points[i]
         x2, y2 = raw_points[i + 1]
-
-        perimeter += math.sqrt(
-            (x2 - x1) ** 2
-            +
-            (y2 - y1) ** 2
-        )
+        perimeter += math.hypot(x2 - x1, y2 - y1)
 
     if perimeter <= 0:
-        raise ValueError(
-            "Invalid Qwen shape perimeter."
-        )
+        raise ValueError("Invalid shape perimeter.")
 
-    # --------------------------------------------------------
-    # Use roughly 55% of requested distance.
-    # This gives Valhalla room to route around
-    # actual streets.
-    # --------------------------------------------------------
+    scale = float(target_distance_m) / perimeter
 
-    target_distance_m = (
-        max_distance_km
-        * 1000
-        * 0.55
-    )
-
-    scale = (
-        target_distance_m
-        / perimeter
-    )
-
-    angle = math.radians(
-        rotation_degrees
-    )
-
+    angle = math.radians(rotation_degrees)
     cos_a = math.cos(angle)
     sin_a = math.sin(angle)
 
     transformed = []
-
     for x, y in raw_points:
+        rx = x * cos_a - y * sin_a
+        ry = x * sin_a + y * cos_a
+        transformed.append([rx * scale, ry * scale])
 
-        # Rotate.
-        rx = (
-            x * cos_a
-            - y * sin_a
-        )
-
-        ry = (
-            x * sin_a
-            + y * cos_a
-        )
-
-        # Scale.
-        transformed.append([
-            rx * scale,
-            ry * scale,
-        ])
+    transformed[0] = [0.0, 0.0]
+    transformed[-1] = [0.0, 0.0]
 
     return transformed
-
-
 # ============================================================
 # LOCAL SHAPE -> GPS
 # ============================================================
@@ -404,16 +454,38 @@ def shape_to_gps(
     start_lat,
     start_lon,
 ):
-    return [
-        local_to_gps(
-            x,
-            y,
-            start_lat,
-            start_lon,
+    """
+    Convert local-meter coordinates into GPS.
+
+    [0, 0] becomes EXACTLY the player's starting GPS point.
+    """
+
+    gps_points = []
+
+    for x, y in local_points:
+
+        gps_points.append(
+            local_to_gps(
+                x,
+                y,
+                start_lat,
+                start_lon,
+            )
         )
-        for x, y in local_points
+
+    # Absolute guarantee that the first and last
+    # coordinates are the player's actual starting point.
+    gps_points[0] = [
+        start_lat,
+        start_lon,
     ]
 
+    gps_points[-1] = [
+        start_lat,
+        start_lon,
+    ]
+
+    return gps_points
 
 # ============================================================
 # VALHALLA POLYLINE6 DECODER
@@ -500,20 +572,42 @@ def decode_polyline6(encoded):
 
     return coordinates
 
-
 # ============================================================
 # VALHALLA ROUTING
 # ============================================================
-
 async def route_through_waypoints(
     waypoints,
     travel_mode,
 ):
     """
-    Route through the AI-generated waypoints.
+    Route through the requested shape vertices.
 
-    Valhalla handles the actual road network.
+    Qwen creates geometric vertices.
+    Valhalla converts those vertices into an actual
+    walkable/cyclable road route.
+
+    IMPORTANT:
+    - First and last points are the same starting location.
+    - Intermediate points are treated as through-points.
+    - We give Valhalla a reasonable search radius because
+      geometric Qwen vertices will rarely land exactly on a road.
     """
+
+    if len(waypoints) < 4:
+        raise ValueError(
+            "A closed route requires at least 4 waypoints."
+        )
+
+    # --------------------------------------------------------
+    # FORCE EXACT CLOSURE
+    # --------------------------------------------------------
+
+    waypoints = [
+        [float(point[0]), float(point[1])]
+        for point in waypoints
+    ]
+
+    waypoints[-1] = waypoints[0].copy()
 
     costing = (
         "pedestrian"
@@ -521,60 +615,163 @@ async def route_through_waypoints(
         else "bicycle"
     )
 
-    locations = [
-        {
+    # --------------------------------------------------------
+    # VALHALLA LOCATIONS
+    # --------------------------------------------------------
+    #
+    # First point  = start
+    # Middle       = through points
+    # Last point   = destination
+    #
+    # The route is still closed because destination == start.
+    # --------------------------------------------------------
+
+    locations = []
+
+    for index, point in enumerate(waypoints):
+
+        if index == 0:
+            location_type = "break"
+        elif index == len(waypoints) - 1:
+            location_type = "break"
+        else:
+            location_type = "through"
+
+        locations.append({
             "lat": point[0],
             "lon": point[1],
-          }
-        for point in waypoints
-    ]
+            "type": location_type,
+
+            # Qwen points represent a desired geometric
+            # location, not necessarily an exact road point.
+            #
+            # This gives Valhalla room to find a nearby
+            # routable road.
+            "radius": 500,
+        })
 
     payload = {
         "locations": locations,
-
         "costing": costing,
-
         "units": "kilometers",
-
         "shape_format": "polyline6",
+
+        # Prefer reasonable pedestrian/cycle paths.
+        "directions_options": {
+            "units": "kilometers"
+        },
     }
 
+    print("🛣️ Valhalla request:")
+    print(json.dumps(payload, indent=2))
+
     async with httpx.AsyncClient(
-        timeout=90
+        timeout=60
     ) as client:
-        response = await client.post(
-            VALHALLA_URL,
-            json=payload,
+
+        try:
+            response = await client.post(
+                VALHALLA_URL,
+                json=payload,
+            )
+
+        except Exception as error:
+            raise ValueError(
+                f"Could not connect to Valhalla: {error}"
+            )
+
+    # --------------------------------------------------------
+    # DO NOT HIDE VALHALLA'S REAL ERROR
+    # --------------------------------------------------------
+
+    if response.status_code >= 400:
+        try:
+            error_data = response.json()
+        except Exception:
+            error_data = response.text
+
+        print("❌ Valhalla HTTP error:")
+        print(
+            json.dumps(
+                error_data,
+                indent=2
+            )
+            if isinstance(error_data, dict)
+            else error_data
         )
 
-        response.raise_for_status()
+        raise ValueError(
+            f"Valhalla routing failed "
+            f"(HTTP {response.status_code}): "
+            f"{error_data}"
+        )
 
+    try:
         data = response.json()
+    except Exception as error:
+        raise ValueError(
+            f"Valhalla returned invalid JSON: {error}"
+        )
+
+    print("✅ Valhalla response received.")
+
+    # --------------------------------------------------------
+    # CHECK TRIP
+    # --------------------------------------------------------
 
     trip = data.get("trip")
 
     if not trip:
         raise ValueError(
-            "Valhalla did not return a trip."
+            "Valhalla returned no trip."
         )
+
+    # --------------------------------------------------------
+    # CHECK LOCATIONS
+    # --------------------------------------------------------
+
+    trip_locations = trip.get(
+        "locations",
+        []
+    )
+
+    for index, location in enumerate(
+        trip_locations
+    ):
+        if location.get("type") == "unreached":
+            raise ValueError(
+                f"Valhalla could not reach waypoint "
+                f"{index}."
+            )
+
+    # --------------------------------------------------------
+    # DECODE ALL LEGS
+    # --------------------------------------------------------
 
     route_points = []
 
-    for leg in trip.get("legs", []):
+    for leg_index, leg in enumerate(
+        trip.get("legs", [])
+    ):
 
         encoded_shape = leg.get(
             "shape"
         )
 
         if not encoded_shape:
+            print(
+                f"⚠️ Leg {leg_index} has no shape."
+            )
             continue
 
         decoded = decode_polyline6(
             encoded_shape
         )
 
+        if not decoded:
+            continue
+
         if route_points:
-            # Avoid duplicate point between legs.
             route_points.extend(
                 decoded[1:]
             )
@@ -588,48 +785,116 @@ async def route_through_waypoints(
             "Valhalla returned an empty route."
         )
 
+    # --------------------------------------------------------
+    # HARD SNAP START / END
+    # --------------------------------------------------------
+
+    route_points[0] = [
+        waypoints[0][0],
+        waypoints[0][1],
+    ]
+
+    route_points[-1] = [
+        waypoints[-1][0],
+        waypoints[-1][1],
+    ]
+
+    # --------------------------------------------------------
+    # DISTANCE
+    # --------------------------------------------------------
+
+    distance_km = (
+        route_distance(route_points)
+        / 1000
+    )
+
+    summary = trip.get(
+        "summary",
+        {}
+    )
+
+    duration_seconds = float(
+        summary.get("time", 0)
+    )
+
     return {
         "points": route_points,
 
         "distance_km": round(
-            route_distance(route_points)
-            / 1000,
+            distance_km,
             3,
         ),
 
         "duration_minutes": round(
-            trip["summary"]["time"]
-            / 60,
+            duration_seconds / 60,
             1,
         ),
     }
 
-
 # ============================================================
 # GENERATE ONE PLAYER ROUTE
-# ============================================================
-
 async def generate_player_route(
     start_location,
     spatial_plan,
     travel_mode,
     max_distance_km,
 ):
-    base_points = transform_shape(
-        spatial_plan["points"],
-        max_distance_km,
-        spatial_plan.get("rotation_degrees", 0),
+    """
+    Generate a closed route for ONE player.
+
+    The player's start is vertex 0 of the shape.
+    """
+
+    limit_km = (
+        spatial_plan.get("budget_km")
+        or max_distance_km
     )
 
-    scale_factors = [1.0, 0.8, 0.65]
+    target_m = (
+        spatial_plan.get("target_perimeter_m")
+        or (limit_km * 1000 / 1.4)
+    )
+
+    base_points = transform_shape(
+        spatial_plan["points"],
+        target_m,
+        spatial_plan.get(
+            "rotation_degrees",
+            0
+        ),
+    )
+
+    scale_factors = [
+        1.0,
+        0.85,
+        0.70,
+        0.55,
+        0.40,
+    ]
 
     last_routed = None
     last_waypoints = None
+    errors = []
 
     for factor in scale_factors:
+
         scaled_points = [
-            [x * factor, y * factor]
+            [
+                x * factor,
+                y * factor
+            ]
             for x, y in base_points
+        ]
+
+        # Always force exact closure.
+        scaled_points[0] = [
+            0.0,
+            0.0
+        ]
+
+        scaled_points[-1] = [
+            0.0,
+            0.0
         ]
 
         waypoints = shape_to_gps(
@@ -638,34 +903,77 @@ async def generate_player_route(
             start_location["lng"],
         )
 
-        waypoints[-1] = waypoints[0]
+        print(
+            f"🔄 Routing attempt "
+            f"factor={factor}"
+        )
 
         try:
+
             routed = await route_through_waypoints(
                 waypoints,
-                travel_mode,
+                travel_mode
             )
 
             last_routed = routed
             last_waypoints = waypoints
 
-            if routed["distance_km"] <= max_distance_km:
+            print(
+                f"🛣️ Route generated: "
+                f"{routed['distance_km']} km "
+                f"(limit {limit_km} km)"
+            )
+
+            # Successful route within limit.
+            if (
+                routed["distance_km"]
+                <= limit_km
+            ):
                 return {
                     **routed,
                     "waypoints": waypoints,
                 }
 
-        except Exception as error:
             print(
-                "Routing attempt failed:",
-                repr(error),
+                "⚠️ Route exceeds distance limit."
             )
 
+        except Exception as error:
+
+            error_message = str(error)
+
+            errors.append(
+                f"factor={factor}: "
+                f"{error_message}"
+            )
+
+            print(
+                f"⚠️ Routing attempt "
+                f"{factor} failed:"
+            )
+            print(
+                error_message
+            )
+
+    # --------------------------------------------------------
+    # NOTHING WORKED
+    # --------------------------------------------------------
+
     if last_routed is None:
+
+        details = "\n".join(
+            errors
+        )
+
         raise ValueError(
             "Valhalla could not create a route "
-            "for this shape."
+            "for this shape.\n"
+            f"Attempts:\n{details}"
         )
+
+    # --------------------------------------------------------
+    # A ROUTE EXISTED BUT EXCEEDED THE LIMIT
+    # --------------------------------------------------------
 
     return {
         **last_routed,
@@ -673,10 +981,8 @@ async def generate_player_route(
         "warning": (
             "Route may exceed the requested "
             "maximum distance."
-        ),
-    }
-
-# ============================================================
+        ),}
+    # ============================================================
 # GENERATE BOTH PLAYER ROUTES
 # ============================================================
 
@@ -688,28 +994,59 @@ async def generate_game_routes(
     player_b,
     spatial_plan,
 ):
-    validate_spatial_plan(spatial_plan)
+    """
+    Generate Player A and Player B routes concurrently.
 
-    player_a_route = await generate_player_route(
-        player=player_a,
-        spatial_plan=spatial_plan,
+    Both players use the SAME shape.
+
+    Their actual GPS locations are different, so the same
+    geometry is anchored independently at each player's
+    starting point.
+    """
+
+    normalized_plan = validate_spatial_plan(spatial_plan)
+    print(
+        "🧠 Spatial plan:",
+        normalized_plan
+    )
+
+    # --------------------------------------------------------
+    # Generate BOTH routes at the same time
+    # --------------------------------------------------------
+
+    player_a_task = generate_player_route(
+        start_location=player_a,
+        spatial_plan=normalized_plan,
         travel_mode=travel_mode,
         max_distance_km=max_distance_km,
     )
 
-    player_b_route = await generate_player_route(
-        player=player_b,
-        spatial_plan=spatial_plan,
+    player_b_task = generate_player_route(
+        start_location=player_b,
+        spatial_plan=normalized_plan,
         travel_mode=travel_mode,
         max_distance_km=max_distance_km,
     )
+
+    player_a_route, player_b_route = await asyncio.gather(
+        player_a_task,
+        player_b_task,
+    )
+
+    print("✅ Player A route ready")
+    print("✅ Player B route ready")
 
     return {
         "prompt": prompt,
+
         "travel_mode": travel_mode,
+
         "max_distance_km": max_distance_km,
-        "spatial_plan": spatial_plan,
+
+        "spatial_plan": normalized_plan,
+
         "player_a": player_a_route,
+
         "player_b": player_b_route,
     }
 # -------------------------------------------------------
@@ -1052,7 +1389,9 @@ async def websocket_endpoint(
                 )
             #generate rote
             elif message_type == "generate_route":
+
                 try:
+
                     challenge = session.challenge
 
                     if challenge is None:
@@ -1065,28 +1404,61 @@ async def websocket_endpoint(
                     if len(session.participants) < 2:
                         await websocket.send_json({
                             "type": "error",
-                            "message": "Both players must be connected."
+                            "message": (
+                                "Both players must be connected."
+                            )
                         })
                         continue
+
+                    # ------------------------------------------------
+                    # Player locations
+                    # ------------------------------------------------
 
                     player_locations = message.get(
                         "players"
                     )
 
-                    if not isinstance(
-                        player_locations,
-                        list
-                    ) or len(player_locations) != 2:
-
+                    if (
+                        not isinstance(
+                            player_locations,
+                            list
+                        )
+                        or len(player_locations) != 2
+                    ):
                         await websocket.send_json({
                             "type": "error",
-                            "message": "Two player locations are required."
+                            "message": (
+                                "Two player locations are required."
+                            )
                         })
-
                         continue
 
                     player_a = player_locations[0]
                     player_b = player_locations[1]
+
+                    # ------------------------------------------------
+                    # Spatial plan generated by LOCAL QWEN
+                    # ------------------------------------------------
+
+                    spatial_plan = message.get(
+                        "spatial_plan"
+                    )
+
+                    if not isinstance(
+                        spatial_plan,
+                        dict
+                    ):
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": (
+                                "A valid spatial plan is required."
+                            )
+                        })
+                        continue
+
+                    # ------------------------------------------------
+                    # Challenge settings
+                    # ------------------------------------------------
 
                     prompt = challenge.get(
                         "prompt",
@@ -1106,8 +1478,12 @@ async def websocket_endpoint(
                     )
 
                     print(
-                        "🚀 Generating AI route..."
+                        "🚀 Generating BOTH player routes..."
                     )
+
+                    # ------------------------------------------------
+                    # Generate both routes concurrently
+                    # ------------------------------------------------
 
                     result = await generate_game_routes(
                         prompt=prompt,
@@ -1115,7 +1491,16 @@ async def websocket_endpoint(
                         max_distance_km=max_distance_km,
                         player_a=player_a,
                         player_b=player_b,
+                        spatial_plan=spatial_plan,
                     )
+
+                    print(
+                        "🎉 BOTH routes generated."
+                    )
+
+                    # ------------------------------------------------
+                    # Send BOTH routes to BOTH players
+                    # ------------------------------------------------
 
                     await broadcast(
                         session,

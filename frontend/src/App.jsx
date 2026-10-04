@@ -13,7 +13,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
-
+import { generateSpatialPlanWithQwen } from "./qwen";
 // ==================================================
 // LEAFLET ICONS
 // ==================================================
@@ -84,142 +84,82 @@ function formatTime(totalSeconds) {
 // GPS → LOCAL 2D COORDINATES
 // ==================================================
 
-function gpsToLocal(lat, lng, originLat, originLng) {
-  const latScale = 111320;
+// function gpsToLocal(lat, lng, originLat, originLng) {
+//   const latScale = 111320;
 
-  const lonScale =
-    111320 *
-    Math.cos((originLat * Math.PI) / 180);
+//   const lonScale =
+//     111320 *
+//     Math.cos((originLat * Math.PI) / 180);
 
-  const x =
-    (lng - originLng) * lonScale;
+//   const x =
+//     (lng - originLng) * lonScale;
 
-  const y =
-    (lat - originLat) * latScale;
+//   const y =
+//     (lat - originLat) * latScale;
 
-  return {
-    x,
-    y,
-  };
-}
+//   return {
+//     x,
+//     y,
+//   };
+// }
 
 // ==================================================
 // CALCULATE RELATIVE PLAYER CONTEXT
 // ==================================================
 
-function calculatePlayerContext(playerA, playerB) {
-  const midLat =
-    (playerA.lat + playerB.lat) / 2;
+// function calculatePlayerContext(playerA, playerB) {
+//   const midLat =
+//     (playerA.lat + playerB.lat) / 2;
 
-  const midLng =
-    (playerA.lng + playerB.lng) / 2;
+//   const midLng =
+//     (playerA.lng + playerB.lng) / 2;
 
-  const a = gpsToLocal(
-    playerA.lat,
-    playerA.lng,
-    midLat,
-    midLng
-  );
+//   const a = gpsToLocal(
+//     playerA.lat,
+//     playerA.lng,
+//     midLat,
+//     midLng
+//   );
 
-  const b = gpsToLocal(
-    playerB.lat,
-    playerB.lng,
-    midLat,
-    midLng
-  );
+//   const b = gpsToLocal(
+//     playerB.lat,
+//     playerB.lng,
+//     midLat,
+//     midLng
+//   );
 
-  const separation = Math.hypot(
-    b.x - a.x,
-    b.y - a.y
-  );
+//   const separation = Math.hypot(
+//     b.x - a.x,
+//     b.y - a.y
+//   );
 
-  return {
-    origin: {
-      lat: midLat,
-      lon: midLng,
-    },
+//   return {
+//     origin: {
+//       lat: midLat,
+//       lon: midLng,
+//     },
 
-    player_a: {
-      x_m: Number(a.x.toFixed(2)),
-      y_m: Number(a.y.toFixed(2)),
-    },
+//     player_a: {
+//       x_m: Number(a.x.toFixed(2)),
+//       y_m: Number(a.y.toFixed(2)),
+//     },
 
-    player_b: {
-      x_m: Number(b.x.toFixed(2)),
-      y_m: Number(b.y.toFixed(2)),
-    },
+//     player_b: {
+//       x_m: Number(b.x.toFixed(2)),
+//       y_m: Number(b.y.toFixed(2)),
+//     },
 
-    separation_m:
-      Number(separation.toFixed(2)),
-  };
-}
-
-// ==================================================
-// EXISTING CLIENT-SIDE QWEN
-// ==================================================
-//
-// IMPORTANT:
-//
-// Replace ONLY the body of this function with
-// your EXISTING working browser-Qwen code.
-//
-// It must return:
-//
-// {
-//   shape_name: "star",
-//   points: [
-//     [-0.8, 0],
-//     [-0.2, 0.2],
-//     [0, 0.8],
-//     ...
-//   ],
-//   rotation_degrees: 0
+//     separation_m:
+//       Number(separation.toFixed(2)),
+//   };
 // }
-//
-// DO NOT call the FastAPI server for Qwen here.
-// ==================================================
 
-async function generateSpatialPlanWithQwen({
-  prompt,
-  travelMode,
-  maxDistanceKm,
-  playerContext,
-}) {
-  /*
-   * YOUR EXISTING CLIENT-SIDE QWEN CODE GOES HERE.
-   *
-   * Example expected final result:
-   *
-   * return {
-   *   shape_name: "star",
-   *   points: [
-   *     [-0.8, 0],
-   *     [-0.25, 0.2],
-   *     [0, 0.8],
-   *     [0.25, 0.2],
-   *     [0.8, 0],
-   *     [0.25, -0.2],
-   *     [0, -0.8],
-   *     [-0.25, -0.2],
-   *     [-0.8, 0]
-   *   ],
-   *   rotation_degrees: 0
-   * };
-   */
 
-  throw new Error(
-    "Connect your existing client-side Qwen function inside generateSpatialPlanWithQwen()."
-  );
-}
-
-// ==================================================
 // APP
-// ==================================================
 
 function App() {
-  // ==================================================
+
   // SESSION STATE
-  // ==================================================
 
   const [screen, setScreen] = useState("home");
 
@@ -250,9 +190,9 @@ function App() {
   const [error, setError] =
     useState("");
 
-  // ==================================================
+
   // CHALLENGE STATE
-  // ==================================================
+
 
   const [challengePrompt, setChallengePrompt] =
     useState("");
@@ -269,9 +209,9 @@ function App() {
   const [challenge, setChallenge] =
     useState(null);
 
-  // ==================================================
+
   // INDIVIDUAL MODE STATE
-  // ==================================================
+
 
   const [myPath, setMyPath] =
     useState([]);
@@ -291,9 +231,9 @@ function App() {
   const [elapsedSeconds, setElapsedSeconds] =
     useState(0);
 
-  // ==================================================
+
   // ROUTE STATE
-  // ==================================================
+
 
   const socketRef = useRef(null);
 
@@ -310,10 +250,11 @@ function App() {
 
   const [routeGenerating, setRouteGenerating] =
     useState(false);
+  const [routesReady, setRoutesReady] = useState(false);
 
-  // ==================================================
+  const [routeAttempt, setRouteAttempt] = useState(0);
   // TIMER
-  // ==================================================
+
 
   useEffect(() => {
     if (!challengeStartedAt) {
@@ -333,50 +274,46 @@ function App() {
     };
   }, [challengeStartedAt]);
 
-  // ==================================================
+
   // RESET CHALLENGE
-  // ==================================================
+
 
   function resetChallengeTracking() {
     setMyPath([]);
     setFriendPath([]);
-
     setMyLocation(null);
     setFriendLocation(null);
 
     setMyStartLocation(null);
     setFriendStartLocation(null);
 
-    setElapsedSeconds(0);
     setChallengeStartedAt(null);
+    setElapsedSeconds(0);
 
     setPlannedRoute(null);
+    setRoutesReady(false);
     setRouteGenerating(false);
 
     routeRequestedRef.current = false;
   }
-
-  // ==================================================
   // BEGIN CHALLENGE
-  // ==================================================
+
 
   function beginChallenge(challengeData) {
-    if (challengeData) {
-      setChallenge(challengeData);
-    }
+    setChallenge(challengeData);
 
     resetChallengeTracking();
-
-    setChallengeStartedAt(Date.now());
 
     startLocationTracking();
 
     setScreen("session");
+
+    // ❌ NO TIMER HERE
   }
 
-  // ==================================================
+
   // CREATE SESSION
-  // ==================================================
+
 
   async function createSession() {
     try {
@@ -417,9 +354,9 @@ function App() {
     }
   }
 
-  // ==================================================
+
   // JOIN SESSION
-  // ==================================================
+
 
   async function joinSession() {
     // Don't join twice
@@ -487,9 +424,9 @@ function App() {
       );
     }
   }
-  // ==================================================
+
   // START LOCATION TRACKING
-  // ==================================================
+
 
   function startLocationTracking() {
     if (!navigator.geolocation) {
@@ -601,9 +538,9 @@ function App() {
       );
   }
 
-  // ==================================================
+
   // STOP LOCATION TRACKING
-  // ==================================================
+
 
   function stopLocationTracking() {
     if (watchIdRef.current !== null) {
@@ -615,9 +552,9 @@ function App() {
     }
   }
 
-  // ==================================================
+
   // WEBSOCKET
-  // ==================================================
+
 
   useEffect(() => {
     if (!sessionId || !participantId) {
@@ -774,29 +711,36 @@ function App() {
 
           return;
         }
-
         // ------------------------------------------
         // ROUTE CREATED
         // ------------------------------------------
 
-        if (
-          message.type ===
-          "route_created"
-        ) {
+        if (message.type === "route_created") {
           console.log(
-            "🗺️ Route received:",
+            "🗺️ BOTH routes received:",
             message.route
           );
 
-          setPlannedRoute(
-            message.route
+          console.log(
+            "👤 Player A route:",
+            message.route?.player_a
           );
 
+          console.log(
+            "👤 Player B route:",
+            message.route?.player_b
+          );
+
+          setPlannedRoute(message.route);
           setRouteGenerating(false);
+          setRoutesReady(true);
+
+          // Timer starts once both routes are ready
+          setElapsedSeconds(0);
+          setChallengeStartedAt(Date.now());
 
           return;
         }
-
         // ------------------------------------------
         // FRIEND LEFT
         // ------------------------------------------
@@ -871,13 +815,13 @@ function App() {
     };
   }, [sessionId, participantId]);
 
-  // ==================================================
+  // ------------------------------------------
   // GENERATE ROUTE
   //
   // QWEN RUNS LOCALLY IN THE CREATOR'S BROWSER.
   //
   // FastAPI ONLY RECEIVES THE SPATIAL PLAN.
-  // ==================================================
+  // ------------------------------------------
 
   useEffect(() => {
     if (screen !== "session") {
@@ -902,8 +846,7 @@ function App() {
 
     if (
       !socketRef.current ||
-      socketRef.current.readyState !==
-      WebSocket.OPEN
+      socketRef.current.readyState !== WebSocket.OPEN
     ) {
       return;
     }
@@ -914,6 +857,10 @@ function App() {
       try {
         setRouteGenerating(true);
         setError("");
+
+        // ------------------------------------------
+        // 1. PLAYER LOCATIONS
+        // ------------------------------------------
 
         const playerA = {
           lat: myLocation.lat,
@@ -926,49 +873,46 @@ function App() {
         };
 
         // ------------------------------------------
-        // 1. Calculate relative positions
+        // 2. CALCULATE RELATIVE POSITIONS
         // ------------------------------------------
 
-        const playerContext =
-          calculatePlayerContext(
-            playerA,
-            playerB
-          );
+        // const playerContext =
+        //   calculatePlayerContext(
+        //     playerA,
+        //     playerB
+        //   );
 
-        console.log(
-          "📍 Player context:",
-          playerContext
-        );
+        // console.log(
+        //   "📍 Player context:",
+        //   playerContext
+        // );
 
         // ------------------------------------------
-        // 2. LOCAL QWEN
+        // 3. RUN QWEN LOCALLY
         // ------------------------------------------
 
         console.log(
           "🤖 Generating spatial plan locally..."
         );
-
-        const spatialPlan =
-          await generateSpatialPlanWithQwen({
-            prompt:
-              challenge.prompt,
-
-            travelMode:
-              challenge.mode,
-
-            maxDistanceKm:
-              challenge.maxDistanceKm,
-
-            playerContext,
-          });
+        const spatialPlan = await generateSpatialPlanWithQwen({
+          prompt: challenge.prompt,
+          travelMode: challenge.mode,
+          maxDistanceKm: challenge.maxDistanceKm,
+          maxTimeMinutes: challenge.maxTimeMinutes,
+          onProgress: (progress) => {
+            if (progress?.status === "progress") {
+              console.log(`🤖 Loading Qwen: ${Math.round(progress.progress || 0)}%`);
+            }
+          },
+        });
 
         console.log(
-          "🤖 Spatial plan:",
+          "🧠 Qwen spatial plan:",
           spatialPlan
         );
 
         // ------------------------------------------
-        // 3. SEND PLAN TO FASTAPI
+        // 4. MAKE SURE WEBSOCKET IS STILL OPEN
         // ------------------------------------------
 
         if (
@@ -981,6 +925,10 @@ function App() {
           );
         }
 
+        // ------------------------------------------
+        // 5. SEND SPATIAL PLAN TO FASTAPI
+        // ------------------------------------------
+
         socketRef.current.send(
           JSON.stringify({
             type: "generate_route",
@@ -990,8 +938,7 @@ function App() {
               playerB,
             ],
 
-            spatial_plan:
-              spatialPlan,
+            spatial_plan: spatialPlan,
           })
         );
 
@@ -1006,15 +953,14 @@ function App() {
         );
 
         setError(
-          err.message ||
+          err?.message ||
           "Could not generate route."
         );
 
         setRouteGenerating(false);
 
         // Allow retry
-        routeRequestedRef.current =
-          false;
+        routeRequestedRef.current = false;
       }
     }
 
@@ -1025,12 +971,12 @@ function App() {
     isCreator,
     myLocation,
     friendLocation,
-    challenge,
+    challenge, routeAttempt
   ]);
 
-  // ==================================================
+
   // CREATE CHALLENGE
-  // ==================================================
+
 
   function createChallenge() {
     setError("");
@@ -1083,9 +1029,9 @@ function App() {
     }
   }
 
-  // ==================================================
+
   // START CHALLENGE
-  // ==================================================
+
 
   function startChallenge() {
     setError("");
@@ -1125,9 +1071,9 @@ function App() {
     );
   }
 
-  // ==================================================
+
   // HOME SCREEN
-  // ==================================================
+
 
   if (screen === "home") {
     return (
@@ -1182,9 +1128,9 @@ function App() {
     );
   }
 
-  // ==================================================
+
   // WAITING SCREEN
-  // ==================================================
+
 
   if (screen === "waiting") {
     return (
@@ -1449,9 +1395,9 @@ function App() {
     );
   }
 
-  // ==================================================
+
   // SESSION / MAP SCREEN
-  // ==================================================
+
 
   const myPlannedRoute =
     isCreator
@@ -1545,7 +1491,12 @@ function App() {
 
       {routeGenerating && (
         <div className="route-generating">
-          🤖 Creating your route...
+          🤖 AI is planning your route locally...
+          <br />
+          <small>
+            Your browser is running Qwen locally.
+            The first run may take a little longer.
+          </small>
         </div>
       )}
 
