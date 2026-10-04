@@ -814,6 +814,11 @@ async def join_session(data: dict):
         ""
     ).strip().upper()
 
+    print("🔎 Join attempt:", join_code)
+    print(
+        "📦 Active sessions:",
+        [session.join_code for session in sessions.values()]
+    )
     if len(join_code) != 6:
         raise HTTPException(
             status_code=400,
