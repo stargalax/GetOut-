@@ -1,4 +1,4 @@
-* {
+/* * {
   box-sizing: border-box;
 }
 
@@ -246,4 +246,492 @@ input {
 
 .challenge-preview small {
   color: #777;
+} */
+
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+body {
+  background: #f6f7fb;
+  color: #171717;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  cursor: pointer;
+}
+
+.app {
+  min-height: 100vh;
+  background: #f6f7fb;
+}
+
+/* =========================================
+   HOME
+========================================= */
+
+.home-container {
+  width: min(420px, calc(100% - 32px));
+  min-height: 100vh;
+  margin: 0 auto;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+
+  padding: 32px 0;
+}
+
+.home-container h1,
+.waiting-container h1 {
+  margin: 0 0 10px;
+
+  font-size: 42px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+
+  color: #6c63ff;
+}
+
+.home-container>p {
+  margin: 0 0 32px;
+
+  color: #6b7280;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* =========================================
+   FORM CONTROLS
+========================================= */
+
+.home-container input,
+.challenge-form input,
+.challenge-form select {
+  width: 100%;
+  height: 52px;
+
+  padding: 0 16px;
+
+  border: 1px solid #e2e4ea;
+  border-radius: 14px;
+
+  background: white;
+  color: #171717;
+
+  outline: none;
+
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.home-container input:focus,
+.challenge-form input:focus,
+.challenge-form select:focus {
+  border-color: #6c63ff;
+
+  box-shadow:
+    0 0 0 4px rgba(108, 99, 255, 0.1);
+}
+
+/* =========================================
+   BUTTONS
+========================================= */
+
+.home-container button,
+.challenge-form button,
+.challenge-preview button {
+  width: 100%;
+  min-height: 52px;
+
+  border-radius: 14px;
+
+  background: #6c63ff;
+  color: white;
+
+  font-weight: 700;
+  font-size: 15px;
+
+  box-shadow:
+    0 8px 20px rgba(108, 99, 255, 0.2);
+
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s,
+    background 0.15s;
+}
+
+.home-container button:hover,
+.challenge-form button:hover,
+.challenge-preview button:hover {
+  background: #5b52e8;
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 10px 24px rgba(108, 99, 255, 0.25);
+}
+
+.home-container button:active,
+.challenge-form button:active,
+.challenge-preview button:active {
+  transform: translateY(0);
+}
+
+/* =========================================
+   DIVIDER
+========================================= */
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+
+  margin: 20px 0;
+
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+
+  flex: 1;
+
+  height: 1px;
+
+  background: #e5e7eb;
+}
+
+/* =========================================
+   ERROR
+========================================= */
+
+.error {
+  margin: 0 0 16px;
+
+  padding: 12px 14px;
+
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+
+  background: #fef2f2;
+  color: #dc2626;
+
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* =========================================
+   WAITING ROOM
+========================================= */
+
+.waiting-container {
+  width: min(520px, calc(100% - 32px));
+  margin: 0 auto;
+
+  padding: 48px 0;
+}
+
+.waiting-container>p {
+  color: #6b7280;
+}
+
+.session-code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  margin: 8px 0 24px;
+  padding: 12px 22px;
+
+  border-radius: 14px;
+
+  background: #edeaff;
+  color: #5b52e8;
+
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 5px;
+}
+
+/* =========================================
+   CHALLENGE FORM / CARD
+========================================= */
+
+.challenge-form,
+.challenge-preview {
+  margin-top: 28px;
+  padding: 24px;
+
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+
+  background: white;
+
+  box-shadow:
+    0 10px 30px rgba(17, 24, 39, 0.06);
+}
+
+.challenge-form h2,
+.challenge-preview h2 {
+  margin: 0 0 20px;
+
+  font-size: 20px;
+  letter-spacing: -0.3px;
+}
+
+.challenge-form label {
+  display: block;
+
+  margin: 18px 0 8px;
+
+  color: #374151;
+
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.challenge-form button {
+  margin-top: 24px;
+}
+
+.challenge-preview p {
+  margin: 10px 0;
+
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.challenge-preview strong {
+  color: #111827;
+}
+
+.challenge-preview hr {
+  margin: 20px 0;
+
+  border: 0;
+  border-top: 1px solid #eee;
+}
+
+/* =========================================
+   GAME HEADER
+========================================= */
+
+.session-header {
+  height: 68px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 18px;
+
+  background: white;
+
+  border-bottom: 1px solid #e5e7eb;
+
+  position: relative;
+  z-index: 1000;
+}
+
+.session-header h1 {
+  margin: 0;
+
+  font-size: 20px;
+  line-height: 1;
+
+  color: #6c63ff;
+}
+
+.session-header span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* =========================================
+   CHALLENGE BAR
+========================================= */
+
+.challenge-bar {
+  min-height: 52px;
+
+  display: flex;
+  align-items: center;
+  gap: 18px;
+
+  padding: 8px 18px;
+
+  overflow-x: auto;
+
+  background: white;
+
+  border-bottom: 1px solid #e5e7eb;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  white-space: nowrap;
+
+  position: relative;
+  z-index: 999;
+}
+
+.challenge-bar>div:first-child {
+  flex: 1;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* =========================================
+   TIMER
+========================================= */
+
+.challenge-timer {
+  position: absolute;
+
+  top: 84px;
+  right: 14px;
+
+  z-index: 1000;
+
+  padding: 9px 13px;
+
+  border-radius: 12px;
+
+  background: rgba(17, 24, 39, 0.9);
+  color: white;
+
+  font-size: 15px;
+  font-weight: 800;
+
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.2);
+}
+
+/* =========================================
+   MAP
+========================================= */
+
+.leaflet-container {
+  width: 100%;
+  height: calc(100vh - 190px) !important;
+
+  min-height: 420px;
+
+  background: #e5e7eb;
+}
+
+/* =========================================
+   STATUS
+========================================= */
+
+.session-status {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+
+  min-height: 58px;
+
+  padding: 10px 18px;
+
+  background: white;
+
+  border-top: 1px solid #e5e7eb;
+
+  overflow-x: auto;
+}
+
+.session-status p {
+  margin: 0;
+
+  color: #6b7280;
+
+  font-size: 12px;
+
+  white-space: nowrap;
+}
+
+/* =========================================
+   MOBILE
+========================================= */
+
+@media (max-width: 600px) {
+
+  .home-container,
+  .waiting-container {
+    width: min(100% - 24px, 520px);
+  }
+
+  .home-container h1,
+  .waiting-container h1 {
+    font-size: 36px;
+  }
+
+  .waiting-container {
+    padding: 32px 0;
+  }
+
+  .challenge-form,
+  .challenge-preview {
+    padding: 20px;
+    border-radius: 18px;
+  }
+
+  .session-header {
+    height: 60px;
+  }
+
+  .session-header h1 {
+    font-size: 18px;
+  }
+
+  .challenge-bar {
+    gap: 12px;
+    min-height: 48px;
+  }
+
+  .challenge-timer {
+    top: 116px;
+    right: 10px;
+
+    font-size: 13px;
+  }
+
+  .leaflet-container {
+    height: calc(100vh - 166px) !important;
+    min-height: 400px;
+  }
+
+  .session-status {
+    gap: 12px;
+
+    padding: 10px 14px;
+  }
 }

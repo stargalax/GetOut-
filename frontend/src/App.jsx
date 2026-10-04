@@ -5,92 +5,223 @@ import {
   TileLayer,
   Marker,
   Popup,
+  Polyline,
+  CircleMarker,
   useMap,
 } from "react-leaflet";
 
 import L from "leaflet";
-
 import "leaflet/dist/leaflet.css";
 import "./App.css";
 
-
-// -------------------------------------------------------
-// Fix Leaflet marker icons when using Vite
-// -------------------------------------------------------
+// ==================================================
+// LEAFLET ICONS
+// ==================================================
 
 delete L.Icon.Default.prototype._getIconUrl;
 
 L.Icon.Default.mergeOptions({
   iconRetinaUrl:
     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-
   iconUrl:
     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-
   shadowUrl:
     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
+// ==================================================
+// CONFIG
+// ==================================================
 
 const API_URL = import.meta.env.VITE_API_URL;
-
 const WS_URL = API_URL.replace(/^http/, "ws");
 
+// For now we are only implementing Individual Mode.
+const GAME_MODE = "individual";
 
-// -------------------------------------------------------
-// Map controller
-// -------------------------------------------------------
+// ==================================================
+// MAP CONTROLLER
+// ==================================================
 
-function MapController({
-  myLocation,
-  friendLocation,
-}) {
-
+function MapController({ myLocation, friendLocation }) {
   const map = useMap();
-
   const hasCentered = useRef(false);
 
   useEffect(() => {
+    if (hasCentered.current) return;
 
-    if (hasCentered.current) {
-      return;
-    }
+    const location = myLocation || friendLocation;
 
-    const location =
-      myLocation || friendLocation;
+    if (!location) return;
 
-    if (!location) {
-      return;
-    }
-
-    map.flyTo(
-      [location.lat, location.lng],
-      16,
-      {
-        duration: 1.2,
-      }
-    );
+    map.flyTo([location.lat, location.lng], 16, {
+      duration: 1.2,
+    });
 
     hasCentered.current = true;
-
-  }, [
-    myLocation,
-    friendLocation,
-    map,
-  ]);
+  }, [myLocation, friendLocation, map]);
 
   return null;
 }
 
+// ==================================================
+// TIME FORMATTER
+// ==================================================
 
-// -------------------------------------------------------
-// App
-// -------------------------------------------------------
+function formatTime(totalSeconds) {
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, "0");
+
+  const seconds = (totalSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+
+  return `${minutes}:${seconds}`;
+}
+
+// ==================================================
+// GPS → LOCAL 2D COORDINATES
+// ==================================================
+
+function gpsToLocal(lat, lng, originLat, originLng) {
+  const latScale = 111320;
+
+  const lonScale =
+    111320 *
+    Math.cos((originLat * Math.PI) / 180);
+
+  const x =
+    (lng - originLng) * lonScale;
+
+  const y =
+    (lat - originLat) * latScale;
+
+  return {
+    x,
+    y,
+  };
+}
+
+// ==================================================
+// CALCULATE RELATIVE PLAYER CONTEXT
+// ==================================================
+
+function calculatePlayerContext(playerA, playerB) {
+  const midLat =
+    (playerA.lat + playerB.lat) / 2;
+
+  const midLng =
+    (playerA.lng + playerB.lng) / 2;
+
+  const a = gpsToLocal(
+    playerA.lat,
+    playerA.lng,
+    midLat,
+    midLng
+  );
+
+  const b = gpsToLocal(
+    playerB.lat,
+    playerB.lng,
+    midLat,
+    midLng
+  );
+
+  const separation = Math.hypot(
+    b.x - a.x,
+    b.y - a.y
+  );
+
+  return {
+    origin: {
+      lat: midLat,
+      lon: midLng,
+    },
+
+    player_a: {
+      x_m: Number(a.x.toFixed(2)),
+      y_m: Number(a.y.toFixed(2)),
+    },
+
+    player_b: {
+      x_m: Number(b.x.toFixed(2)),
+      y_m: Number(b.y.toFixed(2)),
+    },
+
+    separation_m:
+      Number(separation.toFixed(2)),
+  };
+}
+
+// ==================================================
+// EXISTING CLIENT-SIDE QWEN
+// ==================================================
+//
+// IMPORTANT:
+//
+// Replace ONLY the body of this function with
+// your EXISTING working browser-Qwen code.
+//
+// It must return:
+//
+// {
+//   shape_name: "star",
+//   points: [
+//     [-0.8, 0],
+//     [-0.2, 0.2],
+//     [0, 0.8],
+//     ...
+//   ],
+//   rotation_degrees: 0
+// }
+//
+// DO NOT call the FastAPI server for Qwen here.
+// ==================================================
+
+async function generateSpatialPlanWithQwen({
+  prompt,
+  travelMode,
+  maxDistanceKm,
+  playerContext,
+}) {
+  /*
+   * YOUR EXISTING CLIENT-SIDE QWEN CODE GOES HERE.
+   *
+   * Example expected final result:
+   *
+   * return {
+   *   shape_name: "star",
+   *   points: [
+   *     [-0.8, 0],
+   *     [-0.25, 0.2],
+   *     [0, 0.8],
+   *     [0.25, 0.2],
+   *     [0.8, 0],
+   *     [0.25, -0.2],
+   *     [0, -0.8],
+   *     [-0.25, -0.2],
+   *     [-0.8, 0]
+   *   ],
+   *   rotation_degrees: 0
+   * };
+   */
+
+  throw new Error(
+    "Connect your existing client-side Qwen function inside generateSpatialPlanWithQwen()."
+  );
+}
+
+// ==================================================
+// APP
+// ==================================================
 
 function App() {
+  // ==================================================
+  // SESSION STATE
+  // ==================================================
 
-  const [screen, setScreen] =
-    useState("home");
+  const [screen, setScreen] = useState("home");
 
   const [isCreator, setIsCreator] =
     useState(false);
@@ -119,9 +250,9 @@ function App() {
   const [error, setError] =
     useState("");
 
-  // -----------------------------------------------------
-  // Challenge state
-  // -----------------------------------------------------
+  // ==================================================
+  // CHALLENGE STATE
+  // ==================================================
 
   const [challengePrompt, setChallengePrompt] =
     useState("");
@@ -138,30 +269,118 @@ function App() {
   const [challenge, setChallenge] =
     useState(null);
 
+  // ==================================================
+  // INDIVIDUAL MODE STATE
+  // ==================================================
 
-  // -----------------------------------------------------
-  // Refs
-  // -----------------------------------------------------
+  const [myPath, setMyPath] =
+    useState([]);
 
-  const socketRef =
-    useRef(null);
+  const [friendPath, setFriendPath] =
+    useState([]);
 
-  const watchIdRef =
-    useRef(null);
+  const [myStartLocation, setMyStartLocation] =
+    useState(null);
+
+  const [friendStartLocation, setFriendStartLocation] =
+    useState(null);
+
+  const [challengeStartedAt, setChallengeStartedAt] =
+    useState(null);
+
+  const [elapsedSeconds, setElapsedSeconds] =
+    useState(0);
+
+  // ==================================================
+  // ROUTE STATE
+  // ==================================================
+
+  const socketRef = useRef(null);
+
+  const watchIdRef = useRef(null);
 
   const pendingChallengeRef =
     useRef(null);
 
+  const [plannedRoute, setPlannedRoute] =
+    useState(null);
 
-  // -----------------------------------------------------
-  // Create session
-  // -----------------------------------------------------
+  const routeRequestedRef =
+    useRef(false);
+
+  const [routeGenerating, setRouteGenerating] =
+    useState(false);
+
+  // ==================================================
+  // TIMER
+  // ==================================================
+
+  useEffect(() => {
+    if (!challengeStartedAt) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      const elapsed = Math.floor(
+        (Date.now() - challengeStartedAt) / 1000
+      );
+
+      setElapsedSeconds(elapsed);
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [challengeStartedAt]);
+
+  // ==================================================
+  // RESET CHALLENGE
+  // ==================================================
+
+  function resetChallengeTracking() {
+    setMyPath([]);
+    setFriendPath([]);
+
+    setMyLocation(null);
+    setFriendLocation(null);
+
+    setMyStartLocation(null);
+    setFriendStartLocation(null);
+
+    setElapsedSeconds(0);
+    setChallengeStartedAt(null);
+
+    setPlannedRoute(null);
+    setRouteGenerating(false);
+
+    routeRequestedRef.current = false;
+  }
+
+  // ==================================================
+  // BEGIN CHALLENGE
+  // ==================================================
+
+  function beginChallenge(challengeData) {
+    if (challengeData) {
+      setChallenge(challengeData);
+    }
+
+    resetChallengeTracking();
+
+    setChallengeStartedAt(Date.now());
+
+    startLocationTracking();
+
+    setScreen("session");
+  }
+
+  // ==================================================
+  // CREATE SESSION
+  // ==================================================
 
   async function createSession() {
-
-    setError("");
-
     try {
+      setError("");
 
       const response = await fetch(
         `${API_URL}/sessions`,
@@ -179,58 +398,43 @@ function App() {
       const data =
         await response.json();
 
-      setSessionCode(
-        data.join_code
-      );
-
-      setSessionId(
-        data.session_id
-      );
-
       const newParticipantId =
         crypto.randomUUID();
 
-      setParticipantId(
-        newParticipantId
-      );
+      setSessionId(data.session_id);
+      setSessionCode(data.join_code);
+      setParticipantId(newParticipantId);
 
       setIsCreator(true);
-
       setScreen("waiting");
 
-    } catch (error) {
+    } catch (err) {
+      console.error(err);
 
       setError(
-        error.message
+        "Could not create session."
       );
-
     }
   }
 
-
-  // -------------------------------------------------------
-  // Join session
-  // -------------------------------------------------------
+  // ==================================================
+  // JOIN SESSION
+  // ==================================================
 
   async function joinSession() {
-
-    setError("");
-
-    const code =
-      joinCode
-        .trim()
-        .toUpperCase();
-
-    if (code.length !== 6) {
-
-      setError(
-        "Enter the 6-character code."
-      );
-
-      return;
-    }
-
     try {
+      setError("");
+
+      const cleanCode =
+        joinCode.trim().toUpperCase();
+
+      if (cleanCode.length !== 6) {
+        setError(
+          "Enter a valid 6-character join code."
+        );
+
+        return;
+      }
 
       const response = await fetch(
         `${API_URL}/sessions/join`,
@@ -243,7 +447,7 @@ function App() {
           },
 
           body: JSON.stringify({
-            join_code: code,
+            join_code: cleanCode,
           }),
         }
       );
@@ -252,14 +456,11 @@ function App() {
         await response.json();
 
       if (!response.ok) {
-
         throw new Error(
           data.detail ||
           "Could not join session."
         );
       }
-
-      setSessionCode(code);
 
       setSessionId(
         data.session_id
@@ -269,12 +470,11 @@ function App() {
         data.participant_id
       );
 
+      setSessionCode(cleanCode);
+
       setIsCreator(false);
 
-      // If challenge already exists,
-      // immediately show it.
       if (data.challenge) {
-
         setChallenge(
           data.challenge
         );
@@ -282,71 +482,168 @@ function App() {
 
       setScreen("waiting");
 
-    } catch (error) {
+    } catch (err) {
+      console.error(err);
 
       setError(
-        error.message
+        err.message ||
+        "Could not join session."
       );
-
     }
   }
 
+  // ==================================================
+  // START LOCATION TRACKING
+  // ==================================================
 
-  // -------------------------------------------------------
-  // WebSocket
-  // -------------------------------------------------------
+  function startLocationTracking() {
+    if (!navigator.geolocation) {
+      setError(
+        "Geolocation is not supported by this browser."
+      );
+
+      return;
+    }
+
+    if (watchIdRef.current !== null) {
+      return;
+    }
+
+    watchIdRef.current =
+      navigator.geolocation.watchPosition(
+        (position) => {
+          const location = {
+            lat:
+              position.coords.latitude,
+
+            lng:
+              position.coords.longitude,
+
+            accuracy:
+              position.coords.accuracy,
+          };
+
+          // ------------------------------------------
+          // MY CURRENT LOCATION
+          // ------------------------------------------
+
+          setMyLocation(location);
+
+          // ------------------------------------------
+          // MY START LOCATION
+          // ------------------------------------------
+
+          setMyStartLocation(
+            (currentStart) => {
+              if (currentStart) {
+                return currentStart;
+              }
+
+              return location;
+            }
+          );
+
+          // ------------------------------------------
+          // ADD TO MY PATH
+          // ------------------------------------------
+
+          setMyPath(
+            (currentPath) => [
+              ...currentPath,
+              [
+                location.lat,
+                location.lng,
+              ],
+            ]
+          );
+
+          // ------------------------------------------
+          // SEND LOCATION TO FRIEND
+          // ------------------------------------------
+
+          if (
+            socketRef.current &&
+            socketRef.current.readyState ===
+            WebSocket.OPEN
+          ) {
+            socketRef.current.send(
+              JSON.stringify({
+                type: "location",
+
+                lat: location.lat,
+
+                lng: location.lng,
+
+                accuracy:
+                  location.accuracy,
+              })
+            );
+          }
+        },
+
+        (geoError) => {
+          console.error(
+            "Geolocation error:",
+            geoError
+          );
+
+          if (geoError.code === 1) {
+            setError(
+              "Location permission was denied. Please allow location access."
+            );
+          } else {
+            setError(
+              "Could not get your current location."
+            );
+          }
+        },
+
+        {
+          enableHighAccuracy: true,
+          maximumAge: 5000,
+          timeout: 10000,
+        }
+      );
+  }
+
+  // ==================================================
+  // STOP LOCATION TRACKING
+  // ==================================================
+
+  function stopLocationTracking() {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(
+        watchIdRef.current
+      );
+
+      watchIdRef.current = null;
+    }
+  }
+
+  // ==================================================
+  // WEBSOCKET
+  // ==================================================
 
   useEffect(() => {
-
-    if (
-      screen !== "session" &&
-      screen !== "waiting"
-    ) {
+    if (!sessionId || !participantId) {
       return;
     }
 
-    if (
-      !sessionId ||
-      !participantId
-    ) {
-      return;
-    }
-
-    console.log(
-      "🌐 WebSocket URL:",
+    const socket = new WebSocket(
       `${WS_URL}/ws/${sessionId}/${participantId}`
     );
 
-    const socket =
-      new WebSocket(
-        `${WS_URL}/ws/${sessionId}/${participantId}`
-      );
-
-    socketRef.current =
-      socket;
-
-
-    // -----------------------------------------------------
-    // Connected
-    // -----------------------------------------------------
+    socketRef.current = socket;
 
     socket.onopen = () => {
-
       console.log(
-        "🟢 WebSocket connected"
+        "WebSocket connected."
       );
 
-      // If creator created the challenge
-      // before the socket finished connecting,
-      // send it now.
-      if (
-        pendingChallengeRef.current
-      ) {
-
+      if (pendingChallengeRef.current) {
         socket.send(
           JSON.stringify({
-            type:
-              "challenge_created",
+            type: "challenge_created",
 
             challenge:
               pendingChallengeRef.current,
@@ -358,354 +655,395 @@ function App() {
       }
     };
 
-
-    // -----------------------------------------------------
-    // Messages
-    // -----------------------------------------------------
-
     socket.onmessage = (event) => {
+      try {
+        const message =
+          JSON.parse(event.data);
 
-      const message =
-        JSON.parse(event.data);
-
-
-      // -----------------------------------------------
-      // Session state
-      // -----------------------------------------------
-
-      if (
-        message.type ===
-        "session_state"
-      ) {
-
-        setParticipantCount(
-          message.participant_count || 0
+        console.log(
+          "📨 Received:",
+          message
         );
 
-        if (message.challenge) {
+        // ------------------------------------------
+        // SESSION STATE
+        // ------------------------------------------
 
+        if (
+          message.type ===
+          "session_state"
+        ) {
+          setParticipantCount(
+            message.participant_count ||
+            0
+          );
+
+          if (message.challenge) {
+            setChallenge(
+              message.challenge
+            );
+          }
+
+          if (message.started) {
+            beginChallenge(
+              message.challenge
+            );
+          }
+
+          return;
+        }
+
+        // ------------------------------------------
+        // PARTICIPANT COUNT
+        // ------------------------------------------
+
+        if (
+          message.type ===
+          "participant_count"
+        ) {
+          setParticipantCount(
+            message.count || 0
+          );
+
+          return;
+        }
+
+        // ------------------------------------------
+        // CHALLENGE CREATED
+        // ------------------------------------------
+
+        if (
+          message.type ===
+          "challenge_created"
+        ) {
           setChallenge(
             message.challenge
           );
+
+          return;
         }
 
-        // If the challenge had already
-        // started before this user connected.
-        if (message.started) {
+        // ------------------------------------------
+        // CHALLENGE STARTED
+        // ------------------------------------------
 
-          setScreen("session");
-
-          startLocationTracking();
-        }
-      }
-
-
-      // -----------------------------------------------
-      // Participant count
-      // -----------------------------------------------
-
-      if (
-        message.type ===
-        "participant_count"
-      ) {
-
-        setParticipantCount(
-          message.count
-        );
-      }
-
-
-      // -----------------------------------------------
-      // Challenge created
-      // -----------------------------------------------
-
-      if (
-        message.type ===
-        "challenge_created"
-      ) {
-
-        console.log(
-          "🎯 Challenge received:",
-          message.challenge
-        );
-
-        setChallenge(
-          message.challenge
-        );
-
-        setError("");
-      }
-
-
-      // -----------------------------------------------
-      // Challenge started
-      // -----------------------------------------------
-
-      if (
-        message.type ===
-        "challenge_started"
-      ) {
-
-        console.log(
-          "🚀 Challenge started!"
-        );
-
-        if (message.challenge) {
-
-          setChallenge(
+        if (
+          message.type ===
+          "challenge_started"
+        ) {
+          beginChallenge(
             message.challenge
           );
+
+          return;
         }
 
-        // NOW we ask for location.
-        startLocationTracking();
+        // ------------------------------------------
+        // FRIEND LOCATION
+        // ------------------------------------------
 
-        setScreen("session");
-      }
-
-
-      // -----------------------------------------------
-      // Friend location
-      // -----------------------------------------------
-
-      if (
-        message.type ===
-        "location"
-      ) {
-
-        setFriendLocation({
-          lat: message.lat,
-          lng: message.lng,
-          accuracy:
-            message.accuracy,
-        });
-      }
-
-
-      // -----------------------------------------------
-      // Friend left
-      // -----------------------------------------------
-
-      if (
-        message.type ===
-        "participant_left"
-      ) {
-
-        setParticipantCount(
-          (current) =>
-            Math.max(
-              0,
-              current - 1
-            )
-        );
-
-        setFriendLocation(null);
-      }
-
-
-      // -----------------------------------------------
-      // Error
-      // -----------------------------------------------
-
-      if (
-        message.type ===
-        "error"
-      ) {
-
-        setError(
-          message.message
-        );
-      }
-    };
-
-
-    // -----------------------------------------------------
-    // Socket error
-    // -----------------------------------------------------
-
-    socket.onerror = (error) => {
-
-      console.error(
-        "❌ WebSocket error:",
-        error
-      );
-    };
-
-
-    // -----------------------------------------------------
-    // Socket close
-    // -----------------------------------------------------
-
-    socket.onclose = (event) => {
-
-      console.log(
-        "🔌 WebSocket closed:",
-        event.code,
-        event.reason
-      );
-    };
-
-
-    // -----------------------------------------------------
-    // Cleanup
-    // -----------------------------------------------------
-
-    return () => {
-
-      socket.close();
-
-      stopLocationTracking();
-    };
-
-  }, [
-    sessionId,
-    participantId,
-  ]);
-
-
-  // -------------------------------------------------------
-  // Location tracking
-  // -------------------------------------------------------
-
-  function startLocationTracking() {
-
-    if (!navigator.geolocation) {
-
-      setError(
-        "Your browser does not support location."
-      );
-
-      return;
-    }
-
-
-    // Don't create multiple watchers.
-    if (
-      watchIdRef.current !== null
-    ) {
-      return;
-    }
-
-
-    console.log(
-      "📍 Starting location tracking..."
-    );
-
-
-    watchIdRef.current =
-      navigator.geolocation.watchPosition(
-
-        (position) => {
-
+        if (
+          message.type ===
+          "location"
+        ) {
           const location = {
-
-            lat:
-              position.coords.latitude,
-
-            lng:
-              position.coords.longitude,
-
+            lat: message.lat,
+            lng: message.lng,
             accuracy:
-              position.coords.accuracy,
+              message.accuracy,
           };
 
-
-          console.log(
-            "📍 My location:",
+          setFriendLocation(
             location
           );
 
+          setFriendStartLocation(
+            (currentStart) => {
+              if (currentStart) {
+                return currentStart;
+              }
 
-          setMyLocation(
-            location
+              return location;
+            }
           );
 
-
-          // Send location to friend.
-          if (
-            socketRef.current &&
-            socketRef.current.readyState ===
-            WebSocket.OPEN
-          ) {
-
-            socketRef.current.send(
-              JSON.stringify({
-
-                type: "location",
-
-                ...location,
-              })
-            );
-          }
-        },
-
-
-        (error) => {
-
-          console.error(
-            "📍 Location error:",
-            error
+          setFriendPath(
+            (currentPath) => [
+              ...currentPath,
+              [
+                location.lat,
+                location.lng,
+              ],
+            ]
           );
 
-
-          if (
-            error.code ===
-            error.PERMISSION_DENIED
-          ) {
-
-            setError(
-              "Location permission is required to start SyncWalk."
-            );
-
-          } else {
-
-            setError(
-              "Unable to get your location."
-            );
-          }
-        },
-
-
-        {
-          enableHighAccuracy: true,
-
-          maximumAge: 5000,
-
-          timeout: 10000,
+          return;
         }
+
+        // ------------------------------------------
+        // ROUTE CREATED
+        // ------------------------------------------
+
+        if (
+          message.type ===
+          "route_created"
+        ) {
+          console.log(
+            "🗺️ Route received:",
+            message.route
+          );
+
+          setPlannedRoute(
+            message.route
+          );
+
+          setRouteGenerating(false);
+
+          return;
+        }
+
+        // ------------------------------------------
+        // FRIEND LEFT
+        // ------------------------------------------
+
+        if (
+          message.type ===
+          "participant_left"
+        ) {
+          setParticipantCount(
+            (count) =>
+              Math.max(
+                0,
+                count - 1
+              )
+          );
+
+          setFriendLocation(null);
+
+          return;
+        }
+
+        // ------------------------------------------
+        // ERROR
+        // ------------------------------------------
+
+        if (
+          message.type ===
+          "error"
+        ) {
+          console.error(
+            "Server error:",
+            message.message
+          );
+
+          setError(
+            message.message ||
+            "Something went wrong."
+          );
+
+          setRouteGenerating(false);
+
+          routeRequestedRef.current =
+            false;
+
+          return;
+        }
+
+      } catch (err) {
+        console.error(
+          "WebSocket message error:",
+          err
+        );
+      }
+    };
+
+    socket.onerror = (event) => {
+      console.error(
+        "WebSocket error:",
+        event
       );
-  }
+    };
 
+    socket.onclose = () => {
+      console.log(
+        "WebSocket disconnected."
+      );
+    };
 
-  // -------------------------------------------------------
-  // Stop location tracking
-  // -------------------------------------------------------
+    return () => {
+      socket.close();
+      stopLocationTracking();
+    };
+  }, [sessionId, participantId]);
 
-  function stopLocationTracking() {
+  // ==================================================
+  // GENERATE ROUTE
+  //
+  // QWEN RUNS LOCALLY IN THE CREATOR'S BROWSER.
+  //
+  // FastAPI ONLY RECEIVES THE SPATIAL PLAN.
+  // ==================================================
+
+  useEffect(() => {
+    if (screen !== "session") {
+      return;
+    }
+
+    if (!isCreator) {
+      return;
+    }
+
+    if (!myLocation || !friendLocation) {
+      return;
+    }
+
+    if (!challenge) {
+      return;
+    }
+
+    if (routeRequestedRef.current) {
+      return;
+    }
 
     if (
-      watchIdRef.current !== null
+      !socketRef.current ||
+      socketRef.current.readyState !==
+      WebSocket.OPEN
     ) {
-
-      navigator.geolocation.clearWatch(
-        watchIdRef.current
-      );
-
-      watchIdRef.current = null;
+      return;
     }
-  }
 
+    routeRequestedRef.current = true;
 
-  // -------------------------------------------------------
-  // Create challenge
-  // -------------------------------------------------------
+    async function generateRoute() {
+      try {
+        setRouteGenerating(true);
+        setError("");
+
+        const playerA = {
+          lat: myLocation.lat,
+          lng: myLocation.lng,
+        };
+
+        const playerB = {
+          lat: friendLocation.lat,
+          lng: friendLocation.lng,
+        };
+
+        // ------------------------------------------
+        // 1. Calculate relative positions
+        // ------------------------------------------
+
+        const playerContext =
+          calculatePlayerContext(
+            playerA,
+            playerB
+          );
+
+        console.log(
+          "📍 Player context:",
+          playerContext
+        );
+
+        // ------------------------------------------
+        // 2. LOCAL QWEN
+        // ------------------------------------------
+
+        console.log(
+          "🤖 Generating spatial plan locally..."
+        );
+
+        const spatialPlan =
+          await generateSpatialPlanWithQwen({
+            prompt:
+              challenge.prompt,
+
+            travelMode:
+              challenge.mode,
+
+            maxDistanceKm:
+              challenge.maxDistanceKm,
+
+            playerContext,
+          });
+
+        console.log(
+          "🤖 Spatial plan:",
+          spatialPlan
+        );
+
+        // ------------------------------------------
+        // 3. SEND PLAN TO FASTAPI
+        // ------------------------------------------
+
+        if (
+          !socketRef.current ||
+          socketRef.current.readyState !==
+          WebSocket.OPEN
+        ) {
+          throw new Error(
+            "WebSocket disconnected before route generation."
+          );
+        }
+
+        socketRef.current.send(
+          JSON.stringify({
+            type: "generate_route",
+
+            players: [
+              playerA,
+              playerB,
+            ],
+
+            spatial_plan:
+              spatialPlan,
+          })
+        );
+
+        console.log(
+          "🗺️ Spatial plan sent to backend."
+        );
+
+      } catch (err) {
+        console.error(
+          "❌ Route generation failed:",
+          err
+        );
+
+        setError(
+          err.message ||
+          "Could not generate route."
+        );
+
+        setRouteGenerating(false);
+
+        // Allow retry
+        routeRequestedRef.current =
+          false;
+      }
+    }
+
+    generateRoute();
+
+  }, [
+    screen,
+    isCreator,
+    myLocation,
+    friendLocation,
+    challenge,
+  ]);
+
+  // ==================================================
+  // CREATE CHALLENGE
+  // ==================================================
 
   function createChallenge() {
+    setError("");
 
-    if (
-      !challengePrompt.trim()
-    ) {
+    const cleanPrompt =
+      challengePrompt.trim();
 
+    if (!cleanPrompt) {
       setError(
         "Tell us what you want to draw."
       );
@@ -713,78 +1051,51 @@ function App() {
       return;
     }
 
-
     const newChallenge = {
+      prompt: cleanPrompt,
 
-      prompt:
-        challengePrompt.trim(),
-
-      mode:
-        travelMode,
+      mode: travelMode,
 
       maxDistanceKm:
         Number(maxDistance),
 
       maxTimeMinutes:
         Number(maxTime),
+
+      gameMode: GAME_MODE,
     };
 
+    resetChallengeTracking();
 
-    console.log(
-      "🎯 Challenge:",
-      newChallenge
-    );
-
-
-    setChallenge(
-      newChallenge
-    );
-
-    setError("");
-
-
-    // -----------------------------------------------
-    // Send to backend
-    // -----------------------------------------------
+    setChallenge(newChallenge);
 
     if (
       socketRef.current &&
       socketRef.current.readyState ===
       WebSocket.OPEN
     ) {
-
       socketRef.current.send(
         JSON.stringify({
-
-          type:
-            "challenge_created",
+          type: "challenge_created",
 
           challenge:
             newChallenge,
         })
       );
-
     } else {
-
-      // Socket isn't ready yet.
-      // Send when it opens.
       pendingChallengeRef.current =
         newChallenge;
     }
   }
 
-
-  // -------------------------------------------------------
-  // Start challenge
-  // -------------------------------------------------------
+  // ==================================================
+  // START CHALLENGE
+  // ==================================================
 
   function startChallenge() {
-
     setError("");
 
-
     if (!challenge) {
-
       setError(
         "Create a challenge first."
       );
@@ -792,9 +1103,7 @@ function App() {
       return;
     }
 
-
     if (participantCount < 2) {
-
       setError(
         "Waiting for your friend to join."
       );
@@ -802,228 +1111,162 @@ function App() {
       return;
     }
 
-
     if (
       !socketRef.current ||
       socketRef.current.readyState !==
       WebSocket.OPEN
     ) {
-
       setError(
-        "Connecting to your friend..."
+        "Connection is not ready yet."
       );
 
       return;
     }
 
-
-    console.log(
-      "🚀 Starting challenge..."
-    );
-
-
     socketRef.current.send(
       JSON.stringify({
-        type:
-          "start_challenge",
+        type: "start_challenge",
       })
     );
   }
 
-
-  // -------------------------------------------------------
-  // Home
-  // -------------------------------------------------------
+  // ==================================================
+  // HOME SCREEN
+  // ==================================================
 
   if (screen === "home") {
-
     return (
+      <div className="app">
+        <div className="home-container">
 
-      <main className="app">
-
-        <div className="card">
-
-          <h1>
-            SyncWalk
-          </h1>
+          <h1>SyncWalk</h1>
 
           <p>
-            Walk together, even when you're apart.
+            Turn a walk with your friend
+            into a real-world drawing
+            challenge.
           </p>
 
+          {error && (
+            <div className="error">
+              {error}
+            </div>
+          )}
 
           <button
             onClick={createSession}
           >
-            Create session
+            Create a Session
           </button>
-
 
           <div className="divider">
             or
           </div>
 
-
           <input
+            type="text"
+            placeholder="Enter join code"
             value={joinCode}
-
             onChange={(event) =>
               setJoinCode(
-                event.target.value.toUpperCase()
+                event.target.value
+                  .toUpperCase()
               )
             }
-
-            placeholder="Enter join code"
-
             maxLength={6}
           />
 
-
           <button
-            className="secondary"
-
             onClick={joinSession}
           >
-            Join session
+            Join Session
           </button>
 
-
-          {error && (
-
-            <p className="error">
-              {error}
-            </p>
-
-          )}
-
         </div>
-
-      </main>
+      </div>
     );
   }
 
-
-  // -------------------------------------------------------
-  // Waiting / challenge screen
-  // -------------------------------------------------------
+  // ==================================================
+  // WAITING SCREEN
+  // ==================================================
 
   if (screen === "waiting") {
-
     return (
+      <div className="app">
+        <div className="waiting-container">
 
-      <main className="app">
+          <h1>SyncWalk</h1>
 
-        <div className="card challenge-card">
+          <p>
+            Session code
+          </p>
 
+          <div className="session-code">
+            {sessionCode}
+          </div>
 
-          {/* ============================================
-              CREATOR
-          ============================================ */}
+          <p>
+            Players: {participantCount}/2
+          </p>
 
-          {isCreator && !challenge && (
+          {error && (
+            <div className="error">
+              {error}
+            </div>
+          )}
 
-            <>
+          {/* CREATOR - NO CHALLENGE */}
 
-              <h1>
-                🎯 Create a Challenge
-              </h1>
-
-              <p>
-                Share this code with your friend:
-              </p>
-
-
-              <div className="code">
-                {sessionCode}
-              </div>
-
-
-              <p>
-                Connected: {participantCount}/2
-              </p>
-
-
+          {isCreator &&
+            !challenge && (
               <div className="challenge-form">
 
-                <label>
-                  What do you want to draw?
-                </label>
-
+                <h2>
+                  Create your challenge
+                </h2>
 
                 <input
+                  type="text"
+                  placeholder='Example: "I want to draw a star"'
                   value={challengePrompt}
-
                   onChange={(event) =>
                     setChallengePrompt(
                       event.target.value
                     )
                   }
-
-                  placeholder='I want to draw a star'
                 />
 
-
                 <label>
-                  How are you travelling?
+                  Travel mode
                 </label>
 
+                <select
+                  value={travelMode}
+                  onChange={(event) =>
+                    setTravelMode(
+                      event.target.value
+                    )
+                  }
+                >
+                  <option value="walking">
+                    Walking
+                  </option>
 
-                <div className="mode-buttons">
-
-                  <button
-                    type="button"
-
-                    className={
-                      travelMode === "walking"
-                        ? "mode-button active"
-                        : "mode-button"
-                    }
-
-                    onClick={() =>
-                      setTravelMode(
-                        "walking"
-                      )
-                    }
-                  >
-                    🚶 Walking
-                  </button>
-
-
-                  <button
-                    type="button"
-
-                    className={
-                      travelMode === "cycling"
-                        ? "mode-button active"
-                        : "mode-button"
-                    }
-
-                    onClick={() =>
-                      setTravelMode(
-                        "cycling"
-                      )
-                    }
-                  >
-                    🚴 Cycling
-                  </button>
-
-                </div>
-
+                  <option value="cycling">
+                    Cycling
+                  </option>
+                </select>
 
                 <label>
-                  Maximum distance
+                  Maximum distance (km)
                 </label>
-
 
                 <input
                   type="number"
-
                   min="1"
-
                   max="50"
-
                   value={maxDistance}
-
                   onChange={(event) =>
                     setMaxDistance(
                       event.target.value
@@ -1031,26 +1274,15 @@ function App() {
                   }
                 />
 
-
-                <span className="distance-unit">
-                  km
-                </span>
-
-
                 <label>
-                  Maximum time
+                  Maximum time (minutes)
                 </label>
-
 
                 <input
                   type="number"
-
-                  min="5"
-
+                  min="1"
                   max="180"
-
                   value={maxTime}
-
                   onChange={(event) =>
                     setMaxTime(
                       event.target.value
@@ -1058,356 +1290,530 @@ function App() {
                   }
                 />
 
-
-                <span className="distance-unit">
-                  minutes
-                </span>
-
-
                 <button
-                  onClick={
-                    createChallenge
-                  }
+                  onClick={createChallenge}
                 >
                   Create Challenge
                 </button>
 
+              </div>
+            )}
 
-                {error && (
+          {/* CREATOR - CHALLENGE READY */}
 
-                  <p className="error">
-                    {error}
+          {isCreator &&
+            challenge && (
+              <div className="challenge-preview">
+
+                <h2>
+                  Challenge Ready 🎯
+                </h2>
+
+                <p>
+                  <strong>
+                    {challenge.prompt}
+                  </strong>
+                </p>
+
+                <p>
+                  🚶 Mode:{" "}
+                  {challenge.mode}
+                </p>
+
+                <p>
+                  📏 Max distance:{" "}
+                  {challenge.maxDistanceKm} km
+                </p>
+
+                <p>
+                  ⏱️ Max time:{" "}
+                  {challenge.maxTimeMinutes}{" "}
+                  minutes
+                </p>
+
+                <hr />
+
+                <p>
+                  🎮{" "}
+                  <strong>
+                    Individual Mode
+                  </strong>
+                </p>
+
+                <p>
+                  🏠 Start and finish at
+                  your own starting location.
+                </p>
+
+                <p>
+                  👣 You and your friend
+                  draw the same challenge
+                  independently.
+                </p>
+
+                <p>
+                  🗺️ Both paths will appear
+                  on the map.
+                </p>
+
+                {participantCount >= 2 ? (
+                  <button
+                    onClick={startChallenge}
+                  >
+                    Start Challenge
+                  </button>
+                ) : (
+                  <p>
+                    Waiting for your friend
+                    to join...
                   </p>
-
                 )}
 
               </div>
+            )}
 
-            </>
-          )}
+          {/* FRIEND */}
 
+          {!isCreator && (
+            <div className="challenge-preview">
 
-          {/* ============================================
-              CREATOR — CHALLENGE READY
-          ============================================ */}
-
-          {isCreator && challenge && (
-
-            <>
-
-              <h1>
-                🎯 Challenge Ready!
-              </h1>
-
-
-              <div className="code">
-                {sessionCode}
-              </div>
-
-
-              <div className="challenge-preview">
-
-                <strong>
-                  "{challenge.prompt}"
-                </strong>
-
-
-                <p>
-                  {challenge.mode === "walking"
-                    ? "🚶 Walking"
-                    : "🚴 Cycling"}
-                </p>
-
-
-                <p>
-                  📏 {challenge.maxDistanceKm} km maximum
-                </p>
-
-
-                <p>
-                  ⏱️ {challenge.maxTimeMinutes} minutes maximum
-                </p>
-
-              </div>
-
-
-              <p>
-                Connected: {participantCount}/2
-              </p>
-
-
-              {participantCount < 2 ? (
-
-                <p>
-                  ⏳ Waiting for your friend to join...
-                </p>
-
-              ) : (
-
+              {!challenge && (
                 <>
+                  <h2>
+                    Waiting for challenge...
+                  </h2>
 
                   <p>
-                    🟢 Your friend has joined!
+                    Ask the session creator
+                    to create the challenge.
+                  </p>
+                </>
+              )}
+
+              {challenge && (
+                <>
+                  <h2>
+                    Challenge Ready 🎯
+                  </h2>
+
+                  <p>
+                    <strong>
+                      {challenge.prompt}
+                    </strong>
                   </p>
 
+                  <p>
+                    🚶 Mode:{" "}
+                    {challenge.mode}
+                  </p>
 
-                  <button
-                    onClick={
-                      startChallenge
-                    }
-                  >
-                    Start Challenge 🚀
-                  </button>
+                  <p>
+                    📏 Max distance:{" "}
+                    {challenge.maxDistanceKm}{" "}
+                    km
+                  </p>
 
+                  <p>
+                    ⏱️ Max time:{" "}
+                    {challenge.maxTimeMinutes}{" "}
+                    minutes
+                  </p>
+
+                  <hr />
+
+                  <p>
+                    🎮{" "}
+                    <strong>
+                      Individual Mode
+                    </strong>
+                  </p>
+
+                  <p>
+                    🏠 Start and finish at
+                    your own starting location.
+                  </p>
+
+                  <p>
+                    👣 Draw the challenge
+                    independently from your
+                    friend.
+                  </p>
+
+                  <p>
+                    Waiting for the creator
+                    to start...
+                  </p>
                 </>
-
               )}
 
-
-              {error && (
-
-                <p className="error">
-                  {error}
-                </p>
-
-              )}
-
-            </>
-          )}
-
-
-          {/* ============================================
-              FRIEND — WAITING FOR CHALLENGE
-          ============================================ */}
-
-          {!isCreator && !challenge && (
-
-            <>
-
-              <h1>
-                🤝 Waiting for your friend
-              </h1>
-
-
-              <div className="code">
-                {sessionCode}
-              </div>
-
-
-              <p>
-                Connected: {participantCount}/2
-              </p>
-
-
-              <p>
-                ⏳ Your friend is creating the challenge...
-              </p>
-
-
-              {error && (
-
-                <p className="error">
-                  {error}
-                </p>
-
-              )}
-
-            </>
-          )}
-
-
-          {/* ============================================
-              FRIEND — CHALLENGE RECEIVED
-          ============================================ */}
-
-          {!isCreator && challenge && (
-
-            <>
-
-              <h1>
-                🎯 Your Challenge
-              </h1>
-
-
-              <div className="challenge-preview">
-
-                <strong>
-                  "{challenge.prompt}"
-                </strong>
-
-
-                <p>
-                  {challenge.mode === "walking"
-                    ? "🚶 Walking"
-                    : "🚴 Cycling"}
-                </p>
-
-
-                <p>
-                  📏 {challenge.maxDistanceKm} km maximum
-                </p>
-
-
-                <p>
-                  ⏱️ {challenge.maxTimeMinutes} minutes maximum
-                </p>
-
-              </div>
-
-
-              <p>
-                🟢 Your friend is ready.
-              </p>
-
-
-              <p>
-                ⏳ Waiting for them to start...
-              </p>
-
-
-              {error && (
-
-                <p className="error">
-                  {error}
-                </p>
-
-              )}
-
-            </>
+            </div>
           )}
 
         </div>
-
-      </main>
+      </div>
     );
   }
 
+  // ==================================================
+  // SESSION / MAP SCREEN
+  // ==================================================
 
-  // -------------------------------------------------------
-  // Map
-  // -------------------------------------------------------
+  const myPlannedRoute =
+    isCreator
+      ? plannedRoute?.player_a
+      : plannedRoute?.player_b;
 
-  const defaultPosition =
-    myLocation
-      ? [
-        myLocation.lat,
-        myLocation.lng,
-      ]
-      : [
-        20.5937,
-        78.9629,
-      ];
-
+  const friendPlannedRoute =
+    isCreator
+      ? plannedRoute?.player_b
+      : plannedRoute?.player_a;
 
   return (
+    <div className="app">
 
-    <main className="session">
+      {/* HEADER */}
 
-
-      <header>
+      <div className="session-header">
 
         <div>
-
-          <strong>
+          <h1>
             SyncWalk
-          </strong>
-
+          </h1>
 
           <span>
-            {sessionCode}
+            Session: {sessionCode}
           </span>
-
         </div>
-
 
         <div>
-          {participantCount}/2 connected
+          <span>
+            👥 {participantCount}/2
+          </span>
         </div>
-
-      </header>
-
-
-      <div className="map-container">
-
-        <MapContainer
-          center={defaultPosition}
-          zoom={16}
-          className="map"
-        >
-
-          <MapController
-            myLocation={myLocation}
-            friendLocation={friendLocation}
-          />
-
-
-          <TileLayer
-            attribution="&copy; OpenStreetMap contributors"
-
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-
-
-          {myLocation && (
-
-            <Marker
-              position={[
-                myLocation.lat,
-                myLocation.lng,
-              ]}
-            >
-
-              <Popup>
-                You 📍
-              </Popup>
-
-            </Marker>
-
-          )}
-
-
-          {friendLocation && (
-
-            <Marker
-              position={[
-                friendLocation.lat,
-                friendLocation.lng,
-              ]}
-            >
-
-              <Popup>
-                Friend 📍
-              </Popup>
-
-            </Marker>
-
-          )}
-
-        </MapContainer>
 
       </div>
 
+      {/* CHALLENGE INFO */}
 
-      <div className="status">
-
-        {myLocation
-          ? "📍 Sharing your location"
-          : "📍 Waiting for your location..."}
-
-
-        {friendLocation && (
+      {challenge && (
+        <div className="challenge-bar">
 
           <div>
-            🟢 Friend location received
+            🎯 {challenge.prompt}
           </div>
 
+          <div>
+            🎮 Individual
+          </div>
+
+          <div>
+            {challenge.mode ===
+              "walking"
+              ? "🚶 Walking"
+              : "🚴 Cycling"}
+          </div>
+
+          <div>
+            📏{" "}
+            {challenge.maxDistanceKm} km
+          </div>
+
+        </div>
+      )}
+
+      {/* TIMER */}
+
+      <div className="challenge-timer">
+
+        <span>
+          ⏱️{" "}
+          {formatTime(
+            elapsedSeconds
+          )}
+        </span>
+
+        {challenge && (
+          <span>
+            {" "}
+            /{" "}
+            {formatTime(
+              Number(
+                challenge.maxTimeMinutes
+              ) * 60
+            )}
+          </span>
         )}
 
       </div>
 
-    </main>
+      {/* ROUTE GENERATING */}
+
+      {routeGenerating && (
+        <div className="route-generating">
+          🤖 Creating your route...
+        </div>
+      )}
+
+      {/* MAP */}
+
+      <MapContainer
+        center={[
+          20.5937,
+          78.9629,
+        ]}
+        zoom={5}
+        style={{
+          height: "70vh",
+          width: "100%",
+        }}
+      >
+
+        <TileLayer
+          attribution="&copy; OpenStreetMap contributors"
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+
+        <MapController
+          myLocation={myLocation}
+          friendLocation={friendLocation}
+        />
+
+        {/* MY MARKER */}
+
+        {myLocation && (
+          <Marker
+            position={[
+              myLocation.lat,
+              myLocation.lng,
+            ]}
+          >
+            <Popup>
+              <strong>
+                You
+              </strong>
+
+              <br />
+
+              Accuracy:{" "}
+              {Math.round(
+                myLocation.accuracy || 0
+              )}
+              m
+            </Popup>
+          </Marker>
+        )}
+
+        {/* FRIEND MARKER */}
+
+        {friendLocation && (
+          <Marker
+            position={[
+              friendLocation.lat,
+              friendLocation.lng,
+            ]}
+          >
+            <Popup>
+
+              <strong>
+                Your Friend
+              </strong>
+
+              <br />
+
+              Accuracy:{" "}
+              {Math.round(
+                friendLocation.accuracy ||
+                0
+              )}
+              m
+
+            </Popup>
+          </Marker>
+        )}
+
+        {/* MY START */}
+
+        {myStartLocation && (
+          <CircleMarker
+            center={[
+              myStartLocation.lat,
+              myStartLocation.lng,
+            ]}
+            radius={8}
+            pathOptions={{
+              color: "#6C63FF",
+              fillColor: "#6C63FF",
+              fillOpacity: 0.8,
+            }}
+          >
+            <Popup>
+              🏠 Your starting point
+            </Popup>
+          </CircleMarker>
+        )}
+
+        {/* FRIEND START */}
+
+        {friendStartLocation && (
+          <CircleMarker
+            center={[
+              friendStartLocation.lat,
+              friendStartLocation.lng,
+            ]}
+            radius={8}
+            pathOptions={{
+              color: "#F59E0B",
+              fillColor: "#F59E0B",
+              fillOpacity: 0.8,
+            }}
+          >
+            <Popup>
+              🏠 Friend's starting point
+            </Popup>
+          </CircleMarker>
+        )}
+
+        {/* MY ACTUAL PATH */}
+
+        {myPath.length >= 2 && (
+          <Polyline
+            positions={myPath}
+            pathOptions={{
+              color: "#6C63FF",
+              weight: 5,
+              opacity: 0.85,
+            }}
+          />
+        )}
+
+        {/* FRIEND ACTUAL PATH */}
+
+        {friendPath.length >= 2 && (
+          <Polyline
+            positions={friendPath}
+            pathOptions={{
+              color: "#F59E0B",
+              weight: 5,
+              opacity: 0.85,
+            }}
+          />
+        )}
+
+        {/* MY PLANNED ROUTE */}
+
+        {myPlannedRoute?.points?.length >
+          1 && (
+            <Polyline
+              positions={
+                myPlannedRoute.points
+              }
+              pathOptions={{
+                color: "#6C63FF",
+                weight: 7,
+                opacity: 0.35,
+              }}
+            />
+          )}
+
+        {/* FRIEND PLANNED ROUTE */}
+
+        {friendPlannedRoute?.points
+          ?.length > 1 && (
+            <Polyline
+              positions={
+                friendPlannedRoute.points
+              }
+              pathOptions={{
+                color: "#F59E0B",
+                weight: 7,
+                opacity: 0.35,
+              }}
+            />
+          )}
+
+      </MapContainer>
+
+      {/* ROUTE INFO */}
+
+      {plannedRoute && (
+        <div className="route-info">
+
+          <div>
+            🧠 AI shape:{" "}
+            {
+              plannedRoute
+                ?.spatial_plan
+                ?.shape_name
+            }
+          </div>
+
+          <div>
+            🗺️ Your route:{" "}
+            {
+              myPlannedRoute
+                ?.distance_km
+            }{" "}
+            km
+          </div>
+
+          <div>
+            🗺️ Friend route:{" "}
+            {
+              friendPlannedRoute
+                ?.distance_km
+            }{" "}
+            km
+          </div>
+
+        </div>
+      )}
+
+      {/* STATUS */}
+
+      <div className="session-status">
+
+        <p>
+          📍 Your points:{" "}
+          {myPath.length}
+        </p>
+
+        <p>
+          👥 Friend points:{" "}
+          {friendPath.length}
+        </p>
+
+        {myLocation ? (
+          <p>
+            🟢 Your location is being
+            shared
+          </p>
+        ) : (
+          <p>
+            🟡 Getting your location...
+          </p>
+        )}
+
+        {friendLocation ? (
+          <p>
+            🟢 Friend location received
+          </p>
+        ) : (
+          <p>
+            🟡 Waiting for friend's
+            location...
+          </p>
+        )}
+
+      </div>
+
+      {error && (
+        <div className="error">
+          {error}
+        </div>
+      )}
+
+    </div>
   );
 }
-
 
 export default App;
