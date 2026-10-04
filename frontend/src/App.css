@@ -179,3 +179,71 @@ input {
 
   font-size: 14px;
 }
+
+.challenge-card {
+  width: min(480px, 100%);
+}
+
+.challenge-form {
+  margin-top: 24px;
+  text-align: left;
+}
+
+.challenge-form label {
+  display: block;
+  margin-top: 18px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4b4d5a;
+}
+
+.challenge-form input {
+  margin-top: 0;
+  text-align: left;
+  letter-spacing: normal;
+}
+
+.mode-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.mode-button {
+  flex: 1;
+  margin-top: 0;
+  background: #eeeefa;
+  color: #4d4db8;
+}
+
+.mode-button.active {
+  background: #5b5bd6;
+  color: white;
+}
+
+.distance-unit {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #888;
+}
+
+.challenge-preview {
+  margin-top: 20px;
+  padding: 16px;
+  background: #f0f0ff;
+  border-radius: 16px;
+  text-align: center;
+}
+
+.challenge-preview strong {
+  color: #4d4db8;
+}
+
+.challenge-preview p {
+  margin: 8px 0;
+}
+
+.challenge-preview small {
+  color: #777;
+}

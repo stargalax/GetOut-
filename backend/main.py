@@ -4,16 +4,17 @@ from fastapi.middleware.cors import CORSMiddleware
 import secrets
 import string
 import uuid
+
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional
 
 
 app = FastAPI(title="SyncWalk API")
 
 
-# ---------------------------------------------------------
+# -------------------------------------------------------
 # CORS
-# ---------------------------------------------------------
+# -------------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,9 +28,9 @@ app.add_middleware(
 )
 
 
-# ---------------------------------------------------------
-# Session models
-# ---------------------------------------------------------
+# -------------------------------------------------------
+# Data models
+# -------------------------------------------------------
 
 @dataclass
 class Participant:
@@ -41,18 +42,24 @@ class Participant:
 class Session:
     id: str
     join_code: str
+
     participants: Dict[str, Participant] = field(
         default_factory=dict
     )
 
+    # Challenge created by the creator
+    challenge: Optional[dict] = None
 
-# In-memory sessions
+    # Whether the challenge has started
+    started: bool = False
+
+
 sessions: Dict[str, Session] = {}
 
 
-# ---------------------------------------------------------
-# Join-code generation
-# ---------------------------------------------------------
+# -------------------------------------------------------
+# Join code
+# -------------------------------------------------------
 
 ALPHABET = string.ascii_uppercase + string.digits
 
@@ -75,26 +82,27 @@ def create_unique_code() -> str:
             return code
 
 
-# ---------------------------------------------------------
+# -------------------------------------------------------
 # Health check
-# ---------------------------------------------------------
+# -------------------------------------------------------
 
 @app.get("/")
 async def health_check():
     return {
         "status": "ok",
-        "app": "SyncWalk"
+        "app": "SyncWalk",
     }
 
 
-# ---------------------------------------------------------
+# -------------------------------------------------------
 # Create session
-# ---------------------------------------------------------
+# -------------------------------------------------------
 
 @app.post("/sessions")
 async def create_session():
 
     session_id = str(uuid.uuid4())
+
     join_code = create_unique_code()
 
     session = Session(
@@ -110,23 +118,22 @@ async def create_session():
     }
 
 
-# ---------------------------------------------------------
+# -------------------------------------------------------
 # Join session
-# ---------------------------------------------------------
+# -------------------------------------------------------
 
 @app.post("/sessions/join")
 async def join_session(data: dict):
 
-    join_code = (
-        data.get("join_code", "")
-        .strip()
-        .upper()
-    )
+    join_code = data.get(
+        "join_code",
+        ""
+    ).strip().upper()
 
     if len(join_code) != 6:
         raise HTTPException(
             status_code=400,
-            detail="Invalid join code."
+            detail="Invalid join code.",
         )
 
     session = next(
@@ -144,14 +151,13 @@ async def join_session(data: dict):
     if session is None:
         raise HTTPException(
             status_code=404,
-            detail="Session not found."
+            detail="Session not found.",
         )
 
-    # Count currently connected participants
     if len(session.participants) >= 2:
         raise HTTPException(
             status_code=409,
-            detail="This session is full."
+            detail="This session is full.",
         )
 
     participant_id = str(uuid.uuid4())
@@ -159,73 +165,97 @@ async def join_session(data: dict):
     return {
         "session_id": session.id,
         "participant_id": participant_id,
+        "challenge": session.challenge,
+        "started": session.started,
     }
 
 
-# ---------------------------------------------------------
-# WebSocket
-# ---------------------------------------------------------
+# -------------------------------------------------------
+# Broadcast
+# -------------------------------------------------------
 
-@app.websocket("/ws/{session_id}/{participant_id}")
+async def broadcast(
+    session: Session,
+    message: dict,
+    exclude: Optional[str] = None,
+):
+
+    for participant_id, participant in list(
+        session.participants.items()
+    ):
+
+        if participant_id == exclude:
+            continue
+
+        try:
+            await participant.websocket.send_json(
+                message
+            )
+
+        except Exception:
+            session.participants.pop(
+                participant_id,
+                None,
+            )
+
+
+# -------------------------------------------------------
+# WebSocket
+# -------------------------------------------------------
+
+@app.websocket(
+    "/ws/{session_id}/{participant_id}"
+)
 async def websocket_endpoint(
     websocket: WebSocket,
     session_id: str,
     participant_id: str,
 ):
 
-    print("🔌 WebSocket request received")
-    print("   session_id:", session_id)
-    print("   participant_id:", participant_id)
-
     session = sessions.get(session_id)
 
-    # -----------------------------------------------------
-    # Session doesn't exist
-    # -----------------------------------------------------
+    # ---------------------------------------------------
+    # Validate session
+    # ---------------------------------------------------
 
     if session is None:
 
-        print("❌ SESSION NOT FOUND")
-
         await websocket.accept()
 
         await websocket.send_json({
             "type": "error",
-            "message": "Session not found"
+            "message": "Session not found.",
         })
 
         await websocket.close()
 
         return
 
-    print("✅ SESSION FOUND")
+    # ---------------------------------------------------
+    # Validate participant count
+    # ---------------------------------------------------
 
-    # -----------------------------------------------------
-    # Maximum 2 participants
-    # -----------------------------------------------------
-
-    if len(session.participants) >= 2:
-
-        print("❌ SESSION FULL")
+    if (
+        participant_id not in session.participants
+        and len(session.participants) >= 2
+    ):
 
         await websocket.accept()
 
         await websocket.send_json({
             "type": "error",
-            "message": "Session already has two participants"
+            "message": "Session already has two participants.",
         })
 
         await websocket.close()
 
         return
 
-    # -----------------------------------------------------
-    # Accept connection
-    # -----------------------------------------------------
+    # ---------------------------------------------------
+    # Connect
+    # ---------------------------------------------------
 
     await websocket.accept()
-
-    print("✅ WebSocket accepted")
 
     participant = Participant(
         id=participant_id,
@@ -234,40 +264,109 @@ async def websocket_endpoint(
 
     session.participants[participant_id] = participant
 
-    print(
-        "👥 Participants:",
-        list(session.participants.keys())
+    # ---------------------------------------------------
+    # Send current session state to newly connected user
+    # ---------------------------------------------------
+
+    await websocket.send_json({
+        "type": "session_state",
+        "challenge": session.challenge,
+        "started": session.started,
+        "participant_count": len(
+            session.participants
+        ),
+    })
+
+    # ---------------------------------------------------
+    # Tell everyone about participant count
+    # ---------------------------------------------------
+
+    await broadcast(
+        session,
+        {
+            "type": "participant_count",
+            "count": len(
+                session.participants
+            ),
+        },
     )
 
     try:
 
-        # -------------------------------------------------
-        # Tell everyone current participant count
-        # -------------------------------------------------
-
-        await broadcast(
-            session,
-            {
-                "type": "participant_count",
-                "count": len(session.participants),
-            },
-        )
-
-        # -------------------------------------------------
-        # Listen for messages
-        # -------------------------------------------------
-
         while True:
 
             message = await websocket.receive_json()
+            print(f"📨 Received from {participant_id}: {message}")
+            message_type = message.get(
+                "type"
+            )
 
-            message_type = message.get("type")
+            # ------------------------------------------------
+            # Challenge created
+            # ------------------------------------------------
 
-            # ---------------------------------------------
-            # Location update
-            # ---------------------------------------------
+            if message_type == "challenge_created":
 
-            if message_type == "location":
+                challenge = message.get(
+                    "challenge"
+                )
+
+                if not isinstance(
+                    challenge,
+                    dict,
+                ):
+                    continue
+
+                session.challenge = challenge
+                session.started = False
+
+                await broadcast(
+                    session,
+                    {
+                        "type": "challenge_created",
+                        "challenge": challenge,
+                    },
+                )
+
+            # ------------------------------------------------
+            # Challenge started
+            # ------------------------------------------------
+
+            elif message_type == "start_challenge":
+
+                if session.challenge is None:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": (
+                            "Create a challenge first."
+                        ),
+                    })
+                    continue
+
+                if len(session.participants) < 2:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": (
+                            "Waiting for your friend to join."
+                        ),
+                    })
+                    continue
+
+                session.started = True
+
+                await broadcast(
+                    session,
+                    {
+                        "type": "challenge_started",
+                        "challenge": session.challenge,
+                    },
+                )
+
+            # ------------------------------------------------
+            # Location
+            # ------------------------------------------------
+
+            elif message_type == "location":
 
                 location = {
                     "type": "location",
@@ -285,15 +384,10 @@ async def websocket_endpoint(
 
     except WebSocketDisconnect:
 
-        print("👋 Participant disconnected")
-
         session.participants.pop(
             participant_id,
             None,
         )
-
-        # Tell remaining participant
-        # that someone left
 
         await broadcast(
             session,
@@ -303,42 +397,8 @@ async def websocket_endpoint(
             },
         )
 
-        # Delete empty session
-
         if not session.participants:
-
             sessions.pop(
                 session_id,
-                None,
-            )
-
-
-# ---------------------------------------------------------
-# Broadcast helper
-# ---------------------------------------------------------
-
-async def broadcast(
-    session: Session,
-    message: dict,
-    exclude: str | None = None,
-):
-
-    for participant_id, participant in list(
-        session.participants.items()
-    ):
-
-        if participant_id == exclude:
-            continue
-
-        try:
-
-            await participant.websocket.send_json(
-                message
-            )
-
-        except Exception:
-
-            session.participants.pop(
-                participant_id,
                 None,
             )
