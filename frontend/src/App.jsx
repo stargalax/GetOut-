@@ -422,9 +422,14 @@ function App() {
   // ==================================================
 
   async function joinSession() {
+    // Don't join twice
+    if (sessionId) {
+      return;
+    }
+
     try {
       setError("");
-
+      console.log("JOIN CODE INPUT:", joinCode);
       const cleanCode =
         joinCode.trim().toUpperCase();
 
@@ -432,28 +437,28 @@ function App() {
         setError(
           "Enter a valid 6-character join code."
         );
-
         return;
       }
+
+      console.log(
+        "🔑 Joining with code:",
+        cleanCode
+      );
 
       const response = await fetch(
         `${API_URL}/sessions/join`,
         {
           method: "POST",
-
           headers: {
-            "Content-Type":
-              "application/json",
+            "Content-Type": "application/json",
           },
-
           body: JSON.stringify({
             join_code: cleanCode,
           }),
         }
       );
 
-      const data =
-        await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -462,22 +467,13 @@ function App() {
         );
       }
 
-      setSessionId(
-        data.session_id
-      );
-
-      setParticipantId(
-        data.participant_id
-      );
-
+      setSessionId(data.session_id);
+      setParticipantId(data.participant_id);
       setSessionCode(cleanCode);
-
       setIsCreator(false);
 
       if (data.challenge) {
-        setChallenge(
-          data.challenge
-        );
+        setChallenge(data.challenge);
       }
 
       setScreen("waiting");
@@ -491,7 +487,6 @@ function App() {
       );
     }
   }
-
   // ==================================================
   // START LOCATION TRACKING
   // ==================================================
