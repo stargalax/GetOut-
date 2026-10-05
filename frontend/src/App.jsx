@@ -344,6 +344,8 @@ function App() {
   async function createSession() {
     try {
       setError("");
+      console.log("🟢 CREATE SESSION CLICKED");
+      console.log("🌐 API_URL:", API_URL);
       const response = await fetch(`${API_URL}/sessions`, { method: "POST" });
       if (!response.ok) throw new Error("Could not create session.");
       const data = await response.json();

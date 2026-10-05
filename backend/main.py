@@ -1050,6 +1050,8 @@ async def health_check():
 
 @app.post("/sessions")
 async def create_session():
+
+
     session_id = str(uuid.uuid4())
     join_code = create_unique_code()
 
