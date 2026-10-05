@@ -345,6 +345,8 @@ function App() {
     console.log("🌐 API_URL:", API_URL);
 
     try {
+      setError("");
+
       console.log("📡 Sending POST /sessions...");
 
       const response = await fetch(`${API_URL}/sessions`, {
@@ -365,8 +367,15 @@ function App() {
 
       console.log("📦 Session response:", data);
 
+      // IMPORTANT: creator needs their own participant ID
+      const newParticipantId = crypto.randomUUID();
+
+      console.log("👤 Creator participant ID:", newParticipantId);
+
       setSessionId(data.session_id);
       setSessionCode(data.join_code);
+      setParticipantId(newParticipantId);
+
       setIsCreator(true);
       setScreen("waiting");
 
@@ -375,7 +384,6 @@ function App() {
       setError(error?.message || "Could not create session.");
     }
   }
-
   async function joinSession() {
     if (sessionId) return;
 
