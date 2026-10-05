@@ -542,12 +542,30 @@ function App() {
   // ==================================================
 
   useEffect(() => {
-    if (!sessionId || !participantId) return;
+    if (!sessionId || !participantId) {
+      console.log("⏳ WebSocket waiting:", {
+        sessionId,
+        participantId,
+      });
+      return;
+    }
 
-    const socket = new WebSocket(`${WS_URL}/ws/${sessionId}/${participantId}`);
+    const wsUrl = `${WS_URL}/ws/${sessionId}/${participantId}`;
+
+    console.log("🔌 Opening WebSocket:", wsUrl);
+    console.log("👤 Participant:", participantId);
+    console.log("🆔 Session:", sessionId);
+
+    const socket = new WebSocket(wsUrl);
+
     socketRef.current = socket;
 
     socket.onopen = () => {
+      console.log("🟢 WebSocket CONNECTED:", {
+        sessionId,
+        participantId,
+      });
+
       if (pendingChallengeRef.current) {
         socket.send(
           JSON.stringify({
@@ -555,6 +573,7 @@ function App() {
             challenge: pendingChallengeRef.current,
           })
         );
+
         pendingChallengeRef.current = null;
       }
     };
@@ -563,14 +582,33 @@ function App() {
       try {
         const message = JSON.parse(event.data);
 
+        console.log("📨 WebSocket message:", message);
+
         if (message.type === "session_state") {
+          console.log(
+            "👥 SESSION STATE participant count:",
+            message.participant_count
+          );
+
           setParticipantCount(message.participant_count || 0);
-          if (message.challenge) setChallenge(message.challenge);
-          if (message.started) beginChallenge(message.challenge);
+
+          if (message.challenge) {
+            setChallenge(message.challenge);
+          }
+
+          if (message.started) {
+            beginChallenge(message.challenge);
+          }
+
           return;
         }
 
         if (message.type === "participant_count") {
+          console.log(
+            "👥 PARTICIPANT COUNT:",
+            message.count
+          );
+
           setParticipantCount(message.count || 0);
           return;
         }
@@ -591,54 +629,99 @@ function App() {
             lng: message.lng,
             accuracy: message.accuracy,
           };
+
           setFriendLocation(location);
-          setFriendStartLocation((start) => start || location);
-          setFriendPath((path) => [...path, [location.lat, location.lng]]);
+
+          setFriendStartLocation(
+            (currentStart) => currentStart || location
+          );
+
+          setFriendPath(
+            (currentPath) => [
+              ...currentPath,
+              [location.lat, location.lng],
+            ]
+          );
+
           return;
         }
 
         if (message.type === "route_created") {
+          console.log("🗺️ ROUTE CREATED:", message.route);
+
           setPlannedRoute(message.route);
           setRouteGenerating(false);
           setRoutesReady(true);
 
-          // Timer starts once both routes are ready
           setElapsedSeconds(0);
           setChallengeStartedAt(Date.now());
+
           setCheckpointState({
             activeIndex: 1,
             completed: {},
             times: {},
             finished: false,
           });
+
           setDistanceToCheckpoint(null);
           return;
         }
 
         if (message.type === "participant_left") {
-          setParticipantCount((count) => Math.max(0, count - 1));
+          console.log("👋 PARTICIPANT LEFT");
+
+          setParticipantCount(
+            (count) => Math.max(0, count - 1)
+          );
+
           setFriendLocation(null);
           return;
         }
 
         if (message.type === "error") {
-          console.error("Server error:", message.message);
-          setError(message.message || "Something went wrong.");
+          console.error(
+            "❌ Server error:",
+            message.message
+          );
+
+          setError(
+            message.message || "Something went wrong."
+          );
+
           setRouteGenerating(false);
           routeRequestedRef.current = false;
         }
+
       } catch (err) {
-        console.error("WebSocket message error:", err);
+        console.error(
+          "❌ WebSocket message error:",
+          err
+        );
       }
     };
 
-    socket.onerror = (event) => console.error("WebSocket error:", event);
-    socket.onclose = () => console.log("WebSocket disconnected.");
+    socket.onerror = (event) => {
+      console.error("🔴 WebSocket ERROR:", event);
+    };
+
+    socket.onclose = (event) => {
+      console.log("🔴 WebSocket CLOSED:", {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+      });
+    };
 
     return () => {
+      console.log(
+        "🧹 Cleaning up WebSocket:",
+        participantId
+      );
+
       socket.close();
       stopLocationTracking();
     };
+
   }, [sessionId, participantId]);
 
   // ==================================================
