@@ -342,22 +342,33 @@ function App() {
   // ==================================================
 
   async function createSession() {
+    console.log("🟢 CREATE SESSION CLICKED");
+    console.log("🌐 API_URL:", API_URL);
+
     try {
-      setError("");
-      console.log("🟢 CREATE SESSION CLICKED");
-      console.log("🌐 API_URL:", API_URL);
-      const response = await fetch(`${API_URL}/sessions`, { method: "POST" });
-      if (!response.ok) throw new Error("Could not create session.");
+      console.log("📡 Sending POST /sessions...");
+
+      const response = await fetch(`${API_URL}/sessions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      console.log("📥 Response received:", response.status);
+      console.log("📥 Response URL:", response.url);
+
       const data = await response.json();
 
-      setSessionId(data.session_id);
-      setSessionCode(data.join_code);
-      setParticipantId(crypto.randomUUID());
-      setIsCreator(true);
-      setScreen("waiting");
-    } catch (err) {
-      console.error(err);
-      setError("Could not create session.");
+      console.log("📦 Session response:", data);
+
+      // keep your existing state logic here
+      // e.g.
+      // setSessionId(data.session_id);
+      // setJoinCode(data.join_code);
+
+    } catch (error) {
+      console.error("❌ CREATE SESSION FAILED:", error);
     }
   }
 
