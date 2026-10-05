@@ -571,82 +571,61 @@ def decode_polyline6(encoded):
         ])
 
     return coordinates
-
 # ============================================================
-# VALHALLA ROUTING
+# VALHALLA ROUTING (chunked)
+#
+# Replaces the old `route_through_waypoints` in main.py.
+# Paste this whole block in its place. Everything else in
+# main.py (generate_player_route, etc.) stays exactly the same.
+#
+# Why: the public Valhalla server rejects any request with more
+# than 10 locations. We now split the shape into overlapping
+# chunks of <= 10 points, route each chunk, and stitch the
+# results together into one continuous route.
 # ============================================================
-async def route_through_waypoints(
-    waypoints,
-    travel_mode,
-):
+
+# Set VALHALLA_MAX_LOCATIONS in your env if you self-host Valhalla
+# with a higher limit.
+MAX_VALHALLA_LOCATIONS = int(os.getenv("VALHALLA_MAX_LOCATIONS", "10"))
+
+
+def chunk_waypoints(waypoints, size):
     """
-    Route through the requested shape vertices.
+    Split waypoints into overlapping chunks of at most `size` points.
 
-    Qwen creates geometric vertices.
-    Valhalla converts those vertices into an actual
-    walkable/cyclable road route.
+    The last point of one chunk is the first point of the next, so the
+    stitched route stays continuous.
 
-    IMPORTANT:
-    - First and last points are the same starting location.
-    - Intermediate points are treated as through-points.
-    - We give Valhalla a reasonable search radius because
-      geometric Qwen vertices will rarely land exactly on a road.
+    Example (size=4): [0,1,2,3,4,5,6] -> [0,1,2,3], [3,4,5,6]
     """
+    chunks = []
+    i = 0
 
-    if len(waypoints) < 4:
-        raise ValueError(
-            "A closed route requires at least 4 waypoints."
-        )
+    while i < len(waypoints) - 1:
+        chunks.append(waypoints[i:i + size])
+        i += size - 1
 
-    # --------------------------------------------------------
-    # FORCE EXACT CLOSURE
-    # --------------------------------------------------------
+    return chunks
 
-    waypoints = [
-        [float(point[0]), float(point[1])]
-        for point in waypoints
-    ]
 
-    waypoints[-1] = waypoints[0].copy()
+async def _route_chunk(client, chunk, costing):
+    """
+    Route ONE chunk (<= MAX_VALHALLA_LOCATIONS points).
 
-    costing = (
-        "pedestrian"
-        if travel_mode == "walking"
-        else "bicycle"
-    )
-
-    # --------------------------------------------------------
-    # VALHALLA LOCATIONS
-    # --------------------------------------------------------
-    #
-    # First point  = start
-    # Middle       = through points
-    # Last point   = destination
-    #
-    # The route is still closed because destination == start.
-    # --------------------------------------------------------
-
+    Returns (decoded_points, duration_seconds).
+    """
     locations = []
 
-    for index, point in enumerate(waypoints):
-
-        if index == 0:
-            location_type = "break"
-        elif index == len(waypoints) - 1:
-            location_type = "break"
-        else:
-            location_type = "through"
+    for index, point in enumerate(chunk):
+        is_end = index == 0 or index == len(chunk) - 1
 
         locations.append({
             "lat": point[0],
             "lon": point[1],
-            "type": location_type,
+            "type": "break" if is_end else "through",
 
-            # Qwen points represent a desired geometric
-            # location, not necessarily an exact road point.
-            #
-            # This gives Valhalla room to find a nearby
-            # routable road.
+            # Qwen vertices rarely land on a road, so give Valhalla
+            # room to snap to a nearby routable street.
             "radius": 500,
         })
 
@@ -655,34 +634,22 @@ async def route_through_waypoints(
         "costing": costing,
         "units": "kilometers",
         "shape_format": "polyline6",
-
-        # Prefer reasonable pedestrian/cycle paths.
-        "directions_options": {
-            "units": "kilometers"
-        },
+        "directions_options": {"units": "kilometers"},
     }
 
-    print("🛣️ Valhalla request:")
-    print(json.dumps(payload, indent=2))
+    # The public server rate-limits; retry politely on HTTP 429.
+    response = None
 
-    async with httpx.AsyncClient(
-        timeout=60
-    ) as client:
-
+    for attempt in range(3):
         try:
-            response = await client.post(
-                VALHALLA_URL,
-                json=payload,
-            )
-
+            response = await client.post(VALHALLA_URL, json=payload)
         except Exception as error:
-            raise ValueError(
-                f"Could not connect to Valhalla: {error}"
-            )
+            raise ValueError(f"Could not connect to Valhalla: {error}")
 
-    # --------------------------------------------------------
-    # DO NOT HIDE VALHALLA'S REAL ERROR
-    # --------------------------------------------------------
+        if response.status_code != 429:
+            break
+
+        await asyncio.sleep(1.5 * (attempt + 1))
 
     if response.status_code >= 400:
         try:
@@ -690,147 +657,109 @@ async def route_through_waypoints(
         except Exception:
             error_data = response.text
 
-        print("❌ Valhalla HTTP error:")
-        print(
-            json.dumps(
-                error_data,
-                indent=2
-            )
-            if isinstance(error_data, dict)
-            else error_data
-        )
-
         raise ValueError(
             f"Valhalla routing failed "
-            f"(HTTP {response.status_code}): "
-            f"{error_data}"
+            f"(HTTP {response.status_code}): {error_data}"
         )
 
     try:
         data = response.json()
     except Exception as error:
-        raise ValueError(
-            f"Valhalla returned invalid JSON: {error}"
-        )
-
-    print("✅ Valhalla response received.")
-
-    # --------------------------------------------------------
-    # CHECK TRIP
-    # --------------------------------------------------------
+        raise ValueError(f"Valhalla returned invalid JSON: {error}")
 
     trip = data.get("trip")
 
     if not trip:
-        raise ValueError(
-            "Valhalla returned no trip."
-        )
+        raise ValueError("Valhalla returned no trip.")
 
-    # --------------------------------------------------------
-    # CHECK LOCATIONS
-    # --------------------------------------------------------
-
-    trip_locations = trip.get(
-        "locations",
-        []
-    )
-
-    for index, location in enumerate(
-        trip_locations
-    ):
+    for index, location in enumerate(trip.get("locations", [])):
         if location.get("type") == "unreached":
             raise ValueError(
-                f"Valhalla could not reach waypoint "
-                f"{index}."
+                f"Valhalla could not reach waypoint {index} in a chunk."
             )
 
-    # --------------------------------------------------------
-    # DECODE ALL LEGS
-    # --------------------------------------------------------
+    points = []
 
-    route_points = []
+    for leg in trip.get("legs", []):
+        encoded = leg.get("shape")
 
-    for leg_index, leg in enumerate(
-        trip.get("legs", [])
-    ):
-
-        encoded_shape = leg.get(
-            "shape"
-        )
-
-        if not encoded_shape:
-            print(
-                f"⚠️ Leg {leg_index} has no shape."
-            )
+        if not encoded:
             continue
 
-        decoded = decode_polyline6(
-            encoded_shape
-        )
+        decoded = decode_polyline6(encoded)
 
         if not decoded:
             continue
 
-        if route_points:
-            route_points.extend(
-                decoded[1:]
-            )
-        else:
-            route_points.extend(
-                decoded
-            )
+        points.extend(decoded if not points else decoded[1:])
+
+    if len(points) < 2:
+        raise ValueError("Valhalla returned an empty route for a chunk.")
+
+    duration = float(trip.get("summary", {}).get("time", 0))
+
+    return points, duration
+
+
+async def route_through_waypoints(
+    waypoints,
+    travel_mode,
+):
+    """
+    Route through the requested shape vertices.
+
+    Qwen creates geometric vertices; Valhalla turns them into an actual
+    walkable / cyclable route. Long shapes are split into chunks so no
+    single request exceeds Valhalla's location limit.
+
+    The first and last waypoint are the player's start (closed loop).
+    """
+
+    if len(waypoints) < 4:
+        raise ValueError("A closed route requires at least 4 waypoints.")
+
+    # Force exact closure.
+    waypoints = [[float(p[0]), float(p[1])] for p in waypoints]
+    waypoints[-1] = waypoints[0].copy()
+
+    costing = "pedestrian" if travel_mode == "walking" else "bicycle"
+
+    chunks = chunk_waypoints(waypoints, MAX_VALHALLA_LOCATIONS)
+
+    print(
+        f"🛣️ Routing {len(waypoints)} waypoints "
+        f"in {len(chunks)} chunk(s)"
+    )
+
+    route_points = []
+    duration_seconds = 0.0
+
+    async with httpx.AsyncClient(timeout=60) as client:
+
+        # Sequential on purpose: friendlier to the public server's
+        # rate limits (both players already route concurrently).
+        for number, chunk in enumerate(chunks):
+            points, seconds = await _route_chunk(client, chunk, costing)
+
+            # Skip the first point of later chunks: it duplicates the
+            # last point of the previous chunk.
+            route_points.extend(points if number == 0 else points[1:])
+            duration_seconds += seconds
 
     if len(route_points) < 2:
-        raise ValueError(
-            "Valhalla returned an empty route."
-        )
+        raise ValueError("Valhalla returned an empty route.")
 
-    # --------------------------------------------------------
-    # HARD SNAP START / END
-    # --------------------------------------------------------
+    # Hard snap start / end to the player's real position.
+    route_points[0] = [waypoints[0][0], waypoints[0][1]]
+    route_points[-1] = [waypoints[-1][0], waypoints[-1][1]]
 
-    route_points[0] = [
-        waypoints[0][0],
-        waypoints[0][1],
-    ]
-
-    route_points[-1] = [
-        waypoints[-1][0],
-        waypoints[-1][1],
-    ]
-
-    # --------------------------------------------------------
-    # DISTANCE
-    # --------------------------------------------------------
-
-    distance_km = (
-        route_distance(route_points)
-        / 1000
-    )
-
-    summary = trip.get(
-        "summary",
-        {}
-    )
-
-    duration_seconds = float(
-        summary.get("time", 0)
-    )
+    distance_km = route_distance(route_points) / 1000
 
     return {
         "points": route_points,
-
-        "distance_km": round(
-            distance_km,
-            3,
-        ),
-
-        "duration_minutes": round(
-            duration_seconds / 60,
-            1,
-        ),
+        "distance_km": round(distance_km, 3),
+        "duration_minutes": round(duration_seconds / 60, 1),
     }
-
 # ============================================================
 # GENERATE ONE PLAYER ROUTE
 async def generate_player_route(
@@ -1111,7 +1040,7 @@ def create_unique_code() -> str:
 async def health_check():
     return {
         "status": "ok",
-        "app": "SyncWalk",
+        "app": "GetOut!",
     }
 
 

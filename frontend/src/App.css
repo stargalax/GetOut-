@@ -1,253 +1,31 @@
-/* * {
-  box-sizing: border-box;
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fredoka:wght@500;600;700&display=swap");
+
+/* =========================================
+   TOKENS
+========================================= */
+
+:root {
+  --bg: #f8f5ff;
+  --ink: #2a2745;
+  --ink-soft: #6c6890;
+  --line: rgba(42, 39, 69, 0.1);
+
+  --lav: #e8e2ff;
+  --lav-d: #6b5bea;
+  --mint: #d6f4e6;
+  --mint-d: #1f7a5a;
+  --peach: #ffe3d8;
+  --peach-d: #c2512f;
+  --butter: #fff0bd;
+  --butter-d: #8a6a00;
+  --sky: #dcecff;
+
+  --panel: rgba(255, 255, 255, 0.72);
+  --shadow: 0 24px 60px -28px rgba(107, 91, 234, 0.45);
+
+  --display: "Fredoka", "DM Sans", system-ui, sans-serif;
+  --body: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-
-body {
-  margin: 0;
-  font-family:
-    Inter,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-
-  background: #f6f7fb;
-  color: #20222a;
-}
-
-button,
-input {
-  font: inherit;
-}
-
-.app {
-  min-height: 100vh;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  padding: 24px;
-}
-
-.card {
-  width: min(420px, 100%);
-
-  padding: 36px;
-
-  background: white;
-
-  border-radius: 24px;
-
-  box-shadow:
-    0 10px 40px rgba(0, 0, 0, 0.08);
-
-  text-align: center;
-}
-
-.card h1 {
-  margin-bottom: 8px;
-}
-
-.card p {
-  color: #6b7280;
-}
-
-button {
-  width: 100%;
-
-  padding: 14px;
-
-  margin-top: 12px;
-
-  border: none;
-  border-radius: 12px;
-
-  background: #5b5bd6;
-  color: white;
-
-  cursor: pointer;
-}
-
-button.secondary {
-  background: #eeeefa;
-  color: #4d4db8;
-}
-
-input {
-  width: 100%;
-
-  padding: 14px;
-
-  margin-top: 12px;
-
-  border: 1px solid #ddd;
-
-  border-radius: 12px;
-
-  text-align: center;
-
-  letter-spacing: 3px;
-}
-
-.divider {
-  margin: 20px 0;
-
-  color: #999;
-}
-
-.code {
-  font-size: 36px;
-
-  font-weight: 700;
-
-  letter-spacing: 8px;
-
-  padding: 20px;
-
-  margin: 20px 0;
-
-  background: #f0f0ff;
-
-  border-radius: 16px;
-}
-
-.error {
-  color: #d33 !important;
-}
-
-.session {
-  height: 100vh;
-
-  display: flex;
-
-  flex-direction: column;
-}
-
-.session header {
-  padding: 16px 20px;
-
-  background: white;
-
-  display: flex;
-
-  justify-content: space-between;
-
-  align-items: center;
-
-  gap: 16px;
-}
-
-.session header div {
-  display: flex;
-
-  gap: 12px;
-
-  align-items: center;
-}
-
-.session header span {
-  padding: 5px 10px;
-
-  background: #f0f0ff;
-
-  border-radius: 8px;
-
-  font-size: 13px;
-
-  letter-spacing: 2px;
-}
-
-.map-container {
-  flex: 1;
-
-  min-height: 0;
-}
-
-.map {
-  width: 100%;
-  height: 100%;
-}
-
-.status {
-  padding: 14px 20px;
-
-  background: white;
-
-  text-align: center;
-
-  font-size: 14px;
-}
-
-.challenge-card {
-  width: min(480px, 100%);
-}
-
-.challenge-form {
-  margin-top: 24px;
-  text-align: left;
-}
-
-.challenge-form label {
-  display: block;
-  margin-top: 18px;
-  margin-bottom: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #4b4d5a;
-}
-
-.challenge-form input {
-  margin-top: 0;
-  text-align: left;
-  letter-spacing: normal;
-}
-
-.mode-buttons {
-  display: flex;
-  gap: 10px;
-}
-
-.mode-button {
-  flex: 1;
-  margin-top: 0;
-  background: #eeeefa;
-  color: #4d4db8;
-}
-
-.mode-button.active {
-  background: #5b5bd6;
-  color: white;
-}
-
-.distance-unit {
-  display: block;
-  margin-top: 6px;
-  font-size: 13px;
-  color: #888;
-}
-
-.challenge-preview {
-  margin-top: 20px;
-  padding: 16px;
-  background: #f0f0ff;
-  border-radius: 16px;
-  text-align: center;
-}
-
-.challenge-preview strong {
-  color: #4d4db8;
-}
-
-.challenge-preview p {
-  margin: 8px 0;
-}
-
-.challenge-preview small {
-  color: #777;
-} */
-
 
 * {
   box-sizing: border-box;
@@ -259,24 +37,19 @@ body,
   margin: 0;
   width: 100%;
   min-height: 100%;
-  font-family:
-    Inter,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
 }
 
 body {
-  background: #f6f7fb;
-  color: #171717;
+  font-family: var(--body);
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
-input,
-select {
+input {
   font: inherit;
+  color: inherit;
 }
 
 button {
@@ -284,148 +57,555 @@ button {
   cursor: pointer;
 }
 
+:focus-visible {
+  outline: 3px solid var(--lav-d);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.muted {
+  color: var(--ink-soft);
+}
+
+/* =========================================
+   APP SHELL + DRIFTING BACKGROUND
+========================================= */
+
 .app {
+  position: relative;
   min-height: 100vh;
-  background: #f6f7fb;
+  overflow-x: hidden;
+}
+
+.app>*:not(.blobs) {
+  position: relative;
+  z-index: 1;
+}
+
+.blobs {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.blobs i {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.75;
+  animation: drift 26s ease-in-out infinite alternate;
+}
+
+.blobs i:nth-child(1) {
+  width: 46vmax;
+  height: 46vmax;
+  background: #d9d0ff;
+  top: -14vmax;
+  left: -10vmax;
+}
+
+.blobs i:nth-child(2) {
+  width: 38vmax;
+  height: 38vmax;
+  background: #ffd9cc;
+  top: 8vmax;
+  right: -12vmax;
+  animation-duration: 32s;
+  animation-delay: -6s;
+}
+
+.blobs i:nth-child(3) {
+  width: 40vmax;
+  height: 40vmax;
+  background: #c9f0de;
+  bottom: -16vmax;
+  left: 12vmax;
+  animation-duration: 29s;
+  animation-delay: -12s;
+}
+
+.blobs i:nth-child(4) {
+  width: 28vmax;
+  height: 28vmax;
+  background: #fff0b8;
+  bottom: 6vmax;
+  right: 8vmax;
+  animation-duration: 36s;
+  animation-delay: -3s;
+}
+
+@keyframes drift {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  50% {
+    transform: translate(6vmax, -4vmax) scale(1.12);
+  }
+
+  100% {
+    transform: translate(-5vmax, 5vmax) scale(0.94);
+  }
 }
 
 /* =========================================
-   HOME
+   LOGO
 ========================================= */
 
-.home-container {
-  width: min(420px, calc(100% - 32px));
-  min-height: 100vh;
-  margin: 0 auto;
-
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-
-  padding: 32px 0;
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 22px;
 }
 
-.home-container h1,
-.waiting-container h1 {
-  margin: 0 0 10px;
-
-  font-size: 42px;
-  line-height: 1;
-  font-weight: 800;
-  letter-spacing: -1.5px;
-
-  color: #6c63ff;
-}
-
-.home-container>p {
-  margin: 0 0 32px;
-
-  color: #6b7280;
-  font-size: 16px;
-  line-height: 1.6;
-}
-
-/* =========================================
-   FORM CONTROLS
-========================================= */
-
-.home-container input,
-.challenge-form input,
-.challenge-form select {
-  width: 100%;
-  height: 52px;
-
-  padding: 0 16px;
-
-  border: 1px solid #e2e4ea;
+.logo-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
   border-radius: 14px;
-
-  background: white;
-  color: #171717;
-
-  outline: none;
-
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
+  background: var(--lav-d);
+  color: #fff;
+  transform: rotate(-6deg);
 }
 
-.home-container input:focus,
-.challenge-form input:focus,
-.challenge-form select:focus {
-  border-color: #6c63ff;
+.logo.small {
+  font-size: 18px;
+}
 
-  box-shadow:
-    0 0 0 4px rgba(108, 99, 255, 0.1);
+.logo.small .logo-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
+}
+
+/* =========================================
+   PANELS
+========================================= */
+
+.panel {
+  padding: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 32px;
+  background: var(--panel);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: var(--shadow);
+}
+
+.panel h2 {
+  font-size: 22px;
 }
 
 /* =========================================
    BUTTONS
 ========================================= */
 
-.home-container button,
-.challenge-form button,
-.challenge-preview button {
-  width: 100%;
-  min-height: 52px;
-
-  border-radius: 14px;
-
-  background: #6c63ff;
-  color: white;
-
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 54px;
+  padding: 0 24px;
+  border-radius: 18px;
   font-weight: 700;
   font-size: 15px;
-
-  box-shadow:
-    0 8px 20px rgba(108, 99, 255, 0.2);
-
-  transition:
-    transform 0.15s,
-    box-shadow 0.15s,
-    background 0.15s;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
 }
 
-.home-container button:hover,
-.challenge-form button:hover,
-.challenge-preview button:hover {
-  background: #5b52e8;
-  transform: translateY(-1px);
-
-  box-shadow:
-    0 10px 24px rgba(108, 99, 255, 0.25);
+.btn.primary {
+  width: 100%;
+  background: var(--lav-d);
+  color: #fff;
+  box-shadow: 0 12px 24px -10px rgba(107, 91, 234, 0.7);
 }
 
-.home-container button:active,
-.challenge-form button:active,
-.challenge-preview button:active {
-  transform: translateY(0);
+.btn.primary:hover {
+  background: #5a49df;
+  transform: translateY(-2px);
+}
+
+.btn.mint {
+  background: var(--mint);
+  color: var(--mint-d);
+}
+
+.btn.mint:hover {
+  background: #c5efdc;
+  transform: translateY(-2px);
+}
+
+.btn:active {
+  transform: scale(0.97);
 }
 
 /* =========================================
-   DIVIDER
+   HOME  (two columns, lots of room)
 ========================================= */
+
+.home {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  align-items: center;
+  gap: clamp(32px, 6vw, 88px);
+  max-width: 1120px;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 64px 32px 200px;
+}
+
+.hero h1 {
+  margin: 28px 0 20px;
+  font-size: clamp(40px, 6vw, 68px);
+  line-height: 1.02;
+  font-weight: 600;
+}
+
+.hero p {
+  max-width: 34ch;
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+
+.panel-block h2 {
+  margin-bottom: 6px;
+}
+
+.panel-block .muted {
+  margin: 0 0 18px;
+  font-size: 15px;
+}
 
 .divider {
   display: flex;
   align-items: center;
-  gap: 14px;
-
-  margin: 20px 0;
-
-  color: #9ca3af;
-  font-size: 13px;
+  gap: 16px;
+  margin: 28px 0;
+  color: var(--ink-soft);
+  font-size: 14px;
 }
 
 .divider::before,
 .divider::after {
   content: "";
-
   flex: 1;
+  height: 1.5px;
+  border-radius: 2px;
+  background: var(--line);
+}
 
-  height: 1px;
+.join-row {
+  display: flex;
+  gap: 12px;
+}
 
-  background: #e5e7eb;
+/* =========================================
+   INPUTS
+========================================= */
+
+input {
+  width: 100%;
+  height: 54px;
+  padding: 0 18px;
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input::placeholder {
+  color: #a9a5c6;
+}
+
+input:focus {
+  border-color: var(--lav-d);
+  box-shadow: 0 0 0 5px rgba(107, 91, 234, 0.14);
+}
+
+.code-input {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 6px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.field {
+  display: block;
+  margin-top: 22px;
+}
+
+.field>span {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.unit {
+  position: relative;
+}
+
+.unit input {
+  padding-right: 54px;
+}
+
+.unit em {
+  position: absolute;
+  top: 50%;
+  right: 18px;
+  transform: translateY(-50%);
+  font-style: normal;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 18px;
+  background: var(--lav);
+}
+
+.seg button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-weight: 700;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.seg button.on {
+  background: #fff;
+  color: var(--lav-d);
+  box-shadow: 0 6px 14px -8px rgba(107, 91, 234, 0.6);
+}
+
+.challenge-form .btn {
+  margin-top: 30px;
+}
+
+/* =========================================
+   WAITING ROOM  (side + main, roomy)
+========================================= */
+
+.wait {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 28px;
+  align-items: start;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 56px 32px 200px;
+}
+
+.code-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.code-panel .muted {
+  margin: 12px 0 0;
+}
+
+.code {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  padding: 24px 12px;
+  border-radius: 24px;
+  background: var(--lav);
+  color: var(--lav-d);
+  font-family: var(--display);
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.code:hover {
+  background: #ddd4ff;
+  transform: translateY(-2px);
+}
+
+.code svg {
+  letter-spacing: 0;
+  opacity: 0.7;
+}
+
+.players {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 2px dashed #cfc9ee;
+  border-radius: 50%;
+  color: #b3add6;
+  transition: all 0.3s;
+}
+
+.avatar.on {
+  border: 2px solid #fff;
+  background: var(--lav);
+  color: var(--lav-d);
+  box-shadow: 0 6px 14px -6px rgba(107, 91, 234, 0.6);
+}
+
+.avatar.f.on {
+  background: var(--peach);
+  color: var(--peach-d);
+  box-shadow: 0 6px 14px -6px rgba(255, 143, 122, 0.8);
+}
+
+.challenge-preview .prompt {
+  font-size: clamp(26px, 3.4vw, 36px);
+  line-height: 1.15;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 26px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.chip.lav {
+  background: var(--lav);
+  color: var(--lav-d);
+}
+
+.chip.mint {
+  background: var(--mint);
+  color: var(--mint-d);
+}
+
+.chip.peach {
+  background: var(--peach);
+  color: var(--peach-d);
+}
+
+.chip.butter {
+  background: var(--butter);
+  color: var(--butter-d);
+}
+
+.rules {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 28px;
+  padding: 0;
+  list-style: none;
+}
+
+.rules li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.rules svg {
+  flex: none;
+  box-sizing: content-box;
+  padding: 9px;
+  border-radius: 13px;
+  background: var(--sky);
+  color: #3b6fb0;
+}
+
+.waiting-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--butter);
+  color: var(--butter-d);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.challenge-preview.empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 36px 0;
+  text-align: center;
+  color: var(--lav-d);
+}
+
+.challenge-preview.empty p {
+  margin: 0;
+}
+
+/* entrance: one orchestrated moment on the first two screens */
+.home>*,
+.wait>* {
+  animation: rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.home> :nth-child(2),
+.wait> :nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
 }
 
 /* =========================================
@@ -433,305 +613,456 @@ button {
 ========================================= */
 
 .error {
-  margin: 0 0 16px;
-
-  padding: 12px 14px;
-
-  border: 1px solid #fecaca;
-  border-radius: 12px;
-
-  background: #fef2f2;
-  color: #dc2626;
-
+  margin-bottom: 18px;
+  padding: 13px 16px;
+  border-radius: 16px;
+  background: #ffe9e4;
+  color: #a8341b;
   font-size: 14px;
+  font-weight: 500;
   line-height: 1.4;
 }
 
-/* =========================================
-   WAITING ROOM
-========================================= */
-
-.waiting-container {
-  width: min(520px, calc(100% - 32px));
-  margin: 0 auto;
-
-  padding: 48px 0;
-}
-
-.waiting-container>p {
-  color: #6b7280;
-}
-
-.session-code {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  margin: 8px 0 24px;
-  padding: 12px 22px;
-
-  border-radius: 14px;
-
-  background: #edeaff;
-  color: #5b52e8;
-
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: 5px;
+.error.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 2000;
+  max-width: min(520px, calc(100% - 32px));
+  margin: 0;
+  transform: translateX(-50%);
+  box-shadow: 0 14px 30px -12px rgba(168, 52, 27, 0.5);
 }
 
 /* =========================================
-   CHALLENGE FORM / CARD
+   SESSION: TOP BAR + CHIPS
 ========================================= */
 
-.challenge-form,
-.challenge-preview {
-  margin-top: 28px;
-  padding: 24px;
-
-  border: 1px solid #e5e7eb;
-  border-radius: 20px;
-
-  background: white;
-
-  box-shadow:
-    0 10px 30px rgba(17, 24, 39, 0.06);
-}
-
-.challenge-form h2,
-.challenge-preview h2 {
-  margin: 0 0 20px;
-
-  font-size: 20px;
-  letter-spacing: -0.3px;
-}
-
-.challenge-form label {
-  display: block;
-
-  margin: 18px 0 8px;
-
-  color: #374151;
-
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.challenge-form button {
-  margin-top: 24px;
-}
-
-.challenge-preview p {
-  margin: 10px 0;
-
-  color: #4b5563;
-  line-height: 1.5;
-}
-
-.challenge-preview strong {
-  color: #111827;
-}
-
-.challenge-preview hr {
-  margin: 20px 0;
-
-  border: 0;
-  border-top: 1px solid #eee;
-}
-
-/* =========================================
-   GAME HEADER
-========================================= */
-
-.session-header {
-  height: 68px;
-
+.topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-
-  padding: 0 18px;
-
-  background: white;
-
-  border-bottom: 1px solid #e5e7eb;
-
-  position: relative;
-  z-index: 1000;
+  gap: 12px;
+  padding: 16px 24px 10px;
 }
 
-.session-header h1 {
-  margin: 0;
-
-  font-size: 20px;
-  line-height: 1;
-
-  color: #6c63ff;
+.topbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.session-header span {
-  color: #6b7280;
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 8px 18px -12px rgba(107, 91, 234, 0.6);
+}
+
+.pill.timer {
+  background: var(--ink);
+  color: #fff;
+  font-family: var(--display);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pill.timer small {
+  opacity: 0.6;
   font-size: 12px;
 }
 
-/* =========================================
-   CHALLENGE BAR
-========================================= */
-
-.challenge-bar {
-  min-height: 52px;
-
+.chips {
   display: flex;
-  align-items: center;
-  gap: 18px;
-
-  padding: 8px 18px;
-
+  gap: 8px;
+  padding: 4px 24px 12px;
   overflow-x: auto;
+}
 
-  background: white;
+.chip.strong {
+  font-size: 14px;
+}
 
-  border-bottom: 1px solid #e5e7eb;
+/* =========================================
+   SESSION: MAP + SIDE PANEL
+========================================= */
 
-  font-size: 13px;
-  font-weight: 600;
+.session-grid {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 18px;
+  padding: 0 24px 24px;
+}
 
-  white-space: nowrap;
-
+.map-wrap {
   position: relative;
-  z-index: 999;
-}
-
-.challenge-bar>div:first-child {
-  flex: 1;
-
+  isolation: isolate;
+  height: calc(100vh - 150px);
+  min-height: 440px;
+  border: 4px solid #fff;
+  border-radius: 32px;
   overflow: hidden;
-  text-overflow: ellipsis;
+  box-shadow: var(--shadow);
 }
 
-/* =========================================
-   TIMER
-========================================= */
-
-.challenge-timer {
-  position: absolute;
-
-  top: 84px;
-  right: 14px;
-
-  z-index: 1000;
-
-  padding: 9px 13px;
-
-  border-radius: 12px;
-
-  background: rgba(17, 24, 39, 0.9);
-  color: white;
-
-  font-size: 15px;
-  font-weight: 800;
-
-  box-shadow:
-    0 6px 18px rgba(0, 0, 0, 0.2);
-}
-
-/* =========================================
-   MAP
-========================================= */
-
+.map,
 .leaflet-container {
   width: 100%;
-  height: calc(100vh - 190px) !important;
-
-  min-height: 420px;
-
-  background: #e5e7eb;
+  height: 100%;
+  background: #e9e5f7;
+  font-family: var(--body);
 }
 
-/* =========================================
-   STATUS
-========================================= */
+/* soften the OpenStreetMap tiles so they match the pastel theme */
+.leaflet-tile-pane {
+  filter: saturate(0.65) brightness(1.06) contrast(0.92) hue-rotate(-8deg);
+}
 
-.session-status {
+.leaflet-popup-content-wrapper {
+  border-radius: 16px;
+  box-shadow: 0 14px 30px -12px rgba(42, 39, 69, 0.4);
+}
+
+.side {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+}
+
+.card {
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 26px;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--shadow);
+}
+
+.card h3 {
   display: flex;
   align-items: center;
-  gap: 18px;
-
-  min-height: 58px;
-
-  padding: 10px 18px;
-
-  background: white;
-
-  border-top: 1px solid #e5e7eb;
-
-  overflow-x: auto;
+  gap: 9px;
+  margin-bottom: 14px;
+  font-size: 17px;
 }
 
-.session-status p {
+.card h3 svg {
+  color: var(--lav-d);
+}
+
+.route-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.route-rows>div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.route-rows b {
+  margin-left: auto;
+  color: var(--ink);
+}
+
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot.me {
+  background: var(--lav-d);
+}
+
+.dot.friend {
+  background: #ff8f7a;
+}
+
+.dot.ok {
+  background: #3fc79a;
+  box-shadow: 0 0 0 4px rgba(63, 199, 154, 0.2);
+}
+
+.dot.wait {
+  background: #f5c542;
+  box-shadow: 0 0 0 4px rgba(245, 197, 66, 0.25);
+  animation: blink 1.4s ease-in-out infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.status p {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.status p.muted {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+/* ---- checkpoint list ---- */
+
+.cp-list {
+  display: grid;
+  gap: 8px;
   margin: 0;
+  padding: 0;
+  list-style: none;
+}
 
-  color: #6b7280;
+.cp-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: 16px;
+  background: rgba(232, 226, 255, 0.45);
+  color: var(--ink-soft);
+  font-size: 14px;
+}
 
+.cp-list li small {
+  display: block;
+  margin-top: 2px;
   font-size: 12px;
+}
 
-  white-space: nowrap;
+.cp-list li em {
+  margin-left: auto;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--butter-d);
+}
+
+.cp-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.cp-list li.active {
+  background: var(--butter);
+  color: var(--ink);
+}
+
+.cp-list li.active .cp-icon {
+  color: var(--butter-d);
+}
+
+.cp-list li.done {
+  background: var(--mint);
+  color: var(--ink);
+}
+
+.cp-list li.done .cp-icon {
+  color: var(--mint-d);
+}
+
+.card .btn {
+  margin-top: 14px;
+}
+
+.done-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--mint);
+  color: var(--mint-d);
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 600;
 }
 
 /* =========================================
-   MOBILE
+   MAP PINS
 ========================================= */
 
-@media (max-width: 600px) {
+.pin {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 6px 14px -4px rgba(42, 39, 69, 0.5);
+}
 
-  .home-container,
-  .waiting-container {
-    width: min(100% - 24px, 520px);
+.pin.me {
+  background: var(--lav-d);
+  --ring: rgba(107, 91, 234, 0.45);
+  animation: ping 2s ease-out infinite;
+}
+
+.pin.friend {
+  background: #ff8f7a;
+  --ring: rgba(255, 143, 122, 0.5);
+  animation: ping 2s ease-out infinite 0.6s;
+}
+
+.pin.active {
+  background: #ffd75e;
+  color: var(--ink);
+  --ring: rgba(255, 215, 94, 0.7);
+  animation: ping 1.6s ease-out infinite;
+}
+
+.pin.done {
+  background: #7fd8b5;
+  color: var(--ink);
+}
+
+.pin.locked {
+  background: var(--lav);
+  color: #8a85b8;
+}
+
+@keyframes ping {
+  0% {
+    box-shadow: 0 0 0 0 var(--ring), 0 6px 14px -4px rgba(42, 39, 69, 0.5);
   }
 
-  .home-container h1,
-  .waiting-container h1 {
-    font-size: 36px;
+  100% {
+    box-shadow: 0 0 0 16px transparent, 0 6px 14px -4px rgba(42, 39, 69, 0.5);
+  }
+}
+
+/* =========================================
+   LOADING OVERLAY (walker!)
+========================================= */
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(248, 245, 255, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.loading-card {
+  width: min(440px, 100%);
+  padding: 8px 24px 28px;
+  border-radius: 28px;
+  background: #fff;
+  text-align: center;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.loading-card h3 {
+  margin-top: 4px;
+  font-size: 22px;
+}
+
+.loading-card p {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* =========================================
+   RESPONSIVE
+========================================= */
+
+@media (max-width: 960px) {
+
+  .home,
+  .wait {
+    grid-template-columns: 1fr;
   }
 
-  .waiting-container {
-    padding: 32px 0;
+  .home {
+    min-height: auto;
+    padding-top: 40px;
   }
 
-  .challenge-form,
-  .challenge-preview {
-    padding: 20px;
-    border-radius: 18px;
+  .session-grid {
+    grid-template-columns: 1fr;
   }
 
-  .session-header {
-    height: 60px;
+  .map-wrap {
+    height: 56vh;
   }
 
-  .session-header h1 {
-    font-size: 18px;
+  .side {
+    max-height: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .panel {
+    padding: 24px;
+    border-radius: 26px;
   }
 
-  .challenge-bar {
-    gap: 12px;
-    min-height: 48px;
+  .home,
+  .wait {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 
-  .challenge-timer {
-    top: 116px;
-    right: 10px;
-
-    font-size: 13px;
+  .code {
+    font-size: 34px;
+    letter-spacing: 6px;
   }
 
-  .leaflet-container {
-    height: calc(100vh - 166px) !important;
-    min-height: 400px;
+  .field-row {
+    grid-template-columns: 1fr;
+    gap: 0;
   }
 
-  .session-status {
-    gap: 12px;
+  .topbar,
+  .chips {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
 
-    padding: 10px 14px;
+  .session-grid {
+    padding: 0 14px 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .blobs i,
+  .pin,
+  .dot.wait,
+  .home>*,
+  .wait>* {
+    animation: none;
   }
 }

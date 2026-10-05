@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-
 import {
   MapContainer,
   TileLayer,
@@ -9,26 +8,35 @@ import {
   CircleMarker,
   useMap,
 } from "react-leaflet";
-
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import {
+  Footprints,
+  Bike,
+  Plus,
+  LogIn,
+  Users,
+  Target,
+  Flag,
+  MapPin,
+  Lock,
+  CheckCircle2,
+  Timer,
+  Route as RouteIcon,
+  Ruler,
+  Clock,
+  Copy,
+  Check,
+  Trophy,
+  Map as MapIcon,
+  Home,
+  Play,
+  Hourglass,
+  Sparkles,
+} from "lucide-react";
+import WalkingFigure from "./WalkingFirgure";
 import "./App.css";
 import { generateSpatialPlanWithQwen } from "./qwen";
-
-// ==================================================
-// LEAFLET ICONS
-// ==================================================
-
-delete L.Icon.Default.prototype._getIconUrl;
-
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
 
 // ==================================================
 // CONFIG
@@ -36,58 +44,117 @@ L.Icon.Default.mergeOptions({
 
 const API_URL = import.meta.env.VITE_API_URL;
 const WS_URL = API_URL.replace(/^http/, "ws");
-
 const CHECKPOINT_RADIUS_METERS = 50;
+const GAME_MODE = "individual"; // only Individual Mode for now
 
-// For now we are only implementing Individual Mode.
-const GAME_MODE = "individual";
+// OpenStreetMap tiles need no API key (CARTO's now do).
+const TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+const ME_COLOR = "#6b5bea";
+const FRIEND_COLOR = "#ff8f7a";
 
 // ==================================================
-// DISTANCE HELPER
+// HELPERS
 // ==================================================
 
 const getDistanceMeters = (lat1, lon1, lat2, lon2) => {
   const R = 6371000;
-
-  const toRad = (value) => (value * Math.PI) / 180;
-
+  const toRad = (v) => (v * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
-
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) *
-    Math.cos(toRad(lat2)) *
-    Math.sin(dLon / 2) ** 2;
-
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-// ==================================================
-// CHECKPOINT TIME FORMATTER
-// ==================================================
-
-const formatCheckpointTime = (seconds) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(
-    2,
-    "0"
-  )}`;
+const formatTime = (totalSeconds) => {
+  const m = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const s = String(Math.floor(totalSeconds % 60)).padStart(2, "0");
+  return `${m}:${s}`;
 };
 
+const cpLetter = (i, total) =>
+  i === total - 1 ? "F" : String.fromCharCode(64 + i);
+
+const cpLabel = (i, total) =>
+  i === total - 1 ? "Finish" : `Checkpoint ${String.fromCharCode(64 + i)}`;
+
+const pin = (cls, label = "") =>
+  L.divIcon({
+    className: "pin-wrap",
+    html: `<div class="pin ${cls}">${label}</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    popupAnchor: [0, -14],
+  });
+
 // ==================================================
-// CHECKPOINT LABEL
+// SMALL UI PIECES
 // ==================================================
 
-const getCheckpointLabel = (index, total) => {
-  if (index === total - 1) {
-    return "FINISH";
-  }
+function Logo({ small }) {
+  return (
+    <div className={`logo ${small ? "small" : ""}`}>
+      <span className="logo-mark">
+        <Footprints size={small ? 16 : 22} />
+      </span>
+      <span>GetOut!</span>
+    </div>
+  );
+}
 
-  return `CHECKPOINT ${String.fromCharCode(64 + index)}`;
-};
+function Blobs() {
+  return (
+    <div className="blobs" aria-hidden="true">
+      <i />
+      <i />
+      <i />
+      <i />
+    </div>
+  );
+}
+
+function ChallengeSummary({ challenge, isCreator }) {
+  const walking = challenge.mode === "walking";
+  return (
+    <>
+      <h2 className="prompt">{challenge.prompt}</h2>
+
+      <div className="chip-row">
+        <span className="chip lav">
+          {walking ? <Footprints size={15} /> : <Bike size={15} />}
+          {walking ? "Walking" : "Cycling"}
+        </span>
+        <span className="chip mint">
+          <Ruler size={15} /> {challenge.maxDistanceKm} km
+        </span>
+        <span className="chip peach">
+          <Clock size={15} /> {challenge.maxTimeMinutes} min
+        </span>
+        <span className="chip butter">
+          <Target size={15} /> Individual mode
+        </span>
+      </div>
+
+      <ul className="rules">
+        <li>
+          <Home size={18} />
+          Start and finish at your own starting point.
+        </li>
+        <li>
+          <Footprints size={18} />
+          {isCreator
+            ? "You and your friend draw the same shape independently."
+            : "Draw the same shape independently from your friend."}
+        </li>
+        <li>
+          <MapIcon size={18} />
+          Both paths appear live on the map.
+        </li>
+      </ul>
+    </>
+  );
+}
 
 // ==================================================
 // MAP CONTROLLER
@@ -99,15 +166,9 @@ function MapController({ myLocation, friendLocation }) {
 
   useEffect(() => {
     if (hasCentered.current) return;
-
     const location = myLocation || friendLocation;
-
     if (!location) return;
-
-    map.flyTo([location.lat, location.lng], 16, {
-      duration: 1.2,
-    });
-
+    map.flyTo([location.lat, location.lng], 16, { duration: 1.2 });
     hasCentered.current = true;
   }, [myLocation, friendLocation, map]);
 
@@ -115,144 +176,75 @@ function MapController({ myLocation, friendLocation }) {
 }
 
 // ==================================================
-// TIME FORMATTER
-// ==================================================
-
-function formatTime(totalSeconds) {
-  const minutes = Math.floor(totalSeconds / 60)
-    .toString()
-    .padStart(2, "0");
-
-  const seconds = (totalSeconds % 60)
-    .toString()
-    .padStart(2, "0");
-
-  return `${minutes}:${seconds}`;
-}
-
-// ==================================================
 // APP
 // ==================================================
 
 function App() {
-  // ==================================================
-  // SESSION STATE
-  // ==================================================
-
+  // ---------------- session ----------------
   const [screen, setScreen] = useState("home");
-
   const [isCreator, setIsCreator] = useState(false);
-
   const [joinCode, setJoinCode] = useState("");
-
   const [sessionCode, setSessionCode] = useState("");
-
   const [sessionId, setSessionId] = useState("");
-
   const [participantId, setParticipantId] = useState("");
-
   const [participantCount, setParticipantCount] = useState(0);
-
   const [myLocation, setMyLocation] = useState(null);
-
   const [friendLocation, setFriendLocation] = useState(null);
-
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
 
-  // ==================================================
-  // CHALLENGE STATE
-  // ==================================================
-
+  // ---------------- challenge ----------------
   const [challengePrompt, setChallengePrompt] = useState("");
-
   const [travelMode, setTravelMode] = useState("walking");
-
   const [maxDistance, setMaxDistance] = useState(5);
-
   const [maxTime, setMaxTime] = useState(30);
-
   const [challenge, setChallenge] = useState(null);
 
-  // ==================================================
-  // CHECKPOINT STATE
-  // ==================================================
-
+  // ---------------- checkpoints ----------------
   const [checkpointState, setCheckpointState] = useState({
     activeIndex: 1,
     completed: {},
     times: {},
     finished: false,
   });
+  const [distanceToCheckpoint, setDistanceToCheckpoint] = useState(null);
 
-  const [distanceToCheckpoint, setDistanceToCheckpoint] =
-    useState(null);
-
-  // ==================================================
-  // INDIVIDUAL MODE STATE
-  // ==================================================
-
+  // ---------------- individual mode ----------------
   const [myPath, setMyPath] = useState([]);
-
   const [friendPath, setFriendPath] = useState([]);
-
   const [myStartLocation, setMyStartLocation] = useState(null);
-
-  const [friendStartLocation, setFriendStartLocation] =
-    useState(null);
-
-  const [challengeStartedAt, setChallengeStartedAt] =
-    useState(null);
-
+  const [friendStartLocation, setFriendStartLocation] = useState(null);
+  const [challengeStartedAt, setChallengeStartedAt] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  // ==================================================
-  // ROUTE STATE
-  // ==================================================
-
+  // ---------------- route ----------------
   const socketRef = useRef(null);
-
   const watchIdRef = useRef(null);
-
   const pendingChallengeRef = useRef(null);
-
-  const [plannedRoute, setPlannedRoute] = useState(null);
-
   const routeRequestedRef = useRef(false);
-
+  const [plannedRoute, setPlannedRoute] = useState(null);
   const [routeGenerating, setRouteGenerating] = useState(false);
-
   const [routesReady, setRoutesReady] = useState(false);
+  const [routeAttempt] = useState(0);
 
-  const [routeAttempt, setRouteAttempt] = useState(0);
-
-  // ==================================================
-  // CHECKPOINT DERIVED DATA
-  // IMPORTANT: INSIDE APP()
-  // ==================================================
-
-  const myRoute = isCreator
+  // ---------------- derived ----------------
+  const myPlannedRoute = isCreator
     ? plannedRoute?.player_a
     : plannedRoute?.player_b;
+  const friendPlannedRoute = isCreator
+    ? plannedRoute?.player_b
+    : plannedRoute?.player_a;
 
-  const checkpointWaypoints = myRoute?.waypoints || [];
-
+  const checkpointWaypoints = myPlannedRoute?.waypoints || [];
   const activeCheckpoint =
     checkpointWaypoints[checkpointState.activeIndex] || null;
 
   let isNearCheckpoint = false;
-
   if (myLocation && activeCheckpoint) {
-    const [checkpointLat, checkpointLng] = activeCheckpoint;
-
-    const distance = getDistanceMeters(
-      myLocation.lat,
-      myLocation.lng,
-      checkpointLat,
-      checkpointLng
-    );
-
+    const [lat, lng] = activeCheckpoint;
     isNearCheckpoint =
-      distance <= CHECKPOINT_RADIUS_METERS;
+      getDistanceMeters(myLocation.lat, myLocation.lng, lat, lng) <=
+      CHECKPOINT_RADIUS_METERS;
   }
 
   // ==================================================
@@ -260,58 +252,27 @@ function App() {
   // ==================================================
 
   const handleCheckpointCheckIn = () => {
-    if (
-      !myLocation ||
-      !activeCheckpoint ||
-      !challengeStartedAt
-    ) {
-      return;
-    }
+    if (!myLocation || !activeCheckpoint || !challengeStartedAt) return;
 
-    const [checkpointLat, checkpointLng] =
-      activeCheckpoint;
-
+    const [lat, lng] = activeCheckpoint;
     const distance = getDistanceMeters(
       myLocation.lat,
       myLocation.lng,
-      checkpointLat,
-      checkpointLng
+      lat,
+      lng
     );
+    if (distance > CHECKPOINT_RADIUS_METERS) return;
 
-    // Don't allow check-in unless nearby.
-    if (distance > CHECKPOINT_RADIUS_METERS) {
-      return;
-    }
-
-    const elapsed = Math.floor(
-      (Date.now() - challengeStartedAt) / 1000
-    );
-
-    const currentIndex =
-      checkpointState.activeIndex;
+    const elapsed = Math.floor((Date.now() - challengeStartedAt) / 1000);
+    const currentIndex = checkpointState.activeIndex;
+    const lastIndex = checkpointWaypoints.length - 1;
 
     setCheckpointState((prev) => ({
       ...prev,
-
-      completed: {
-        ...prev.completed,
-        [currentIndex]: true,
-      },
-
-      times: {
-        ...prev.times,
-        [currentIndex]: elapsed,
-      },
-
-      activeIndex:
-        currentIndex <
-          checkpointWaypoints.length - 1
-          ? currentIndex + 1
-          : currentIndex,
-
-      finished:
-        currentIndex ===
-        checkpointWaypoints.length - 1,
+      completed: { ...prev.completed, [currentIndex]: true },
+      times: { ...prev.times, [currentIndex]: elapsed },
+      activeIndex: currentIndex < lastIndex ? currentIndex + 1 : currentIndex,
+      finished: currentIndex === lastIndex,
     }));
   };
 
@@ -320,27 +281,15 @@ function App() {
   // ==================================================
 
   useEffect(() => {
-    if (!challengeStartedAt) {
-      return;
-    }
-
+    if (!challengeStartedAt) return;
     const timer = setInterval(() => {
-      const elapsed = Math.floor(
-        (Date.now() - challengeStartedAt) / 1000
-      );
-
-      setElapsedSeconds(elapsed);
+      setElapsedSeconds(Math.floor((Date.now() - challengeStartedAt) / 1000));
     }, 1000);
-
-    return () => {
-      clearInterval(timer);
-    };
+    return () => clearInterval(timer);
   }, [challengeStartedAt]);
 
   // ==================================================
   // CHECKPOINT DISTANCE
-  // IMPORTANT: TOP-LEVEL HOOK
-  // NOT INSIDE ANOTHER EFFECT
   // ==================================================
 
   useEffect(() => {
@@ -348,352 +297,179 @@ function App() {
       setDistanceToCheckpoint(null);
       return;
     }
-
-    const [checkpointLat, checkpointLng] =
-      activeCheckpoint;
-
-    const distance = getDistanceMeters(
-      myLocation.lat,
-      myLocation.lng,
-      checkpointLat,
-      checkpointLng
+    const [lat, lng] = activeCheckpoint;
+    setDistanceToCheckpoint(
+      Math.round(getDistanceMeters(myLocation.lat, myLocation.lng, lat, lng))
     );
-
-    setDistanceToCheckpoint(Math.round(distance));
   }, [myLocation, activeCheckpoint]);
 
   // ==================================================
-  // RESET CHALLENGE
+  // RESET / BEGIN
   // ==================================================
 
   function resetChallengeTracking() {
     setMyPath([]);
     setFriendPath([]);
-
     setMyLocation(null);
     setFriendLocation(null);
-
     setMyStartLocation(null);
     setFriendStartLocation(null);
-
     setChallengeStartedAt(null);
     setElapsedSeconds(0);
-
     setPlannedRoute(null);
     setRoutesReady(false);
     setRouteGenerating(false);
-
-    // Reset checkpoints
     setCheckpointState({
       activeIndex: 1,
       completed: {},
       times: {},
       finished: false,
     });
-
     setDistanceToCheckpoint(null);
-
     routeRequestedRef.current = false;
   }
 
-  // ==================================================
-  // BEGIN CHALLENGE
-  // ==================================================
-
   function beginChallenge(challengeData) {
     setChallenge(challengeData);
-
     resetChallengeTracking();
-
     startLocationTracking();
-
     setScreen("session");
-
-    // Timer intentionally does NOT start here.
-    // It starts when route_created is received.
+    // Timer starts when route_created is received.
   }
 
   // ==================================================
-  // CREATE SESSION
+  // CREATE / JOIN SESSION
   // ==================================================
 
   async function createSession() {
     try {
       setError("");
-
-      const response = await fetch(
-        `${API_URL}/sessions`,
-        {
-          method: "POST",
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          "Could not create session."
-        );
-      }
-
+      const response = await fetch(`${API_URL}/sessions`, { method: "POST" });
+      if (!response.ok) throw new Error("Could not create session.");
       const data = await response.json();
-
-      const newParticipantId =
-        crypto.randomUUID();
 
       setSessionId(data.session_id);
       setSessionCode(data.join_code);
-      setParticipantId(newParticipantId);
-
+      setParticipantId(crypto.randomUUID());
       setIsCreator(true);
       setScreen("waiting");
     } catch (err) {
       console.error(err);
-
-      setError(
-        "Could not create session."
-      );
+      setError("Could not create session.");
     }
   }
 
-  // ==================================================
-  // JOIN SESSION
-  // ==================================================
-
   async function joinSession() {
-    if (sessionId) {
-      return;
-    }
+    if (sessionId) return;
 
     try {
       setError("");
-
-      console.log(
-        "JOIN CODE INPUT:",
-        joinCode
-      );
-
-      const cleanCode =
-        joinCode.trim().toUpperCase();
+      const cleanCode = joinCode.trim().toUpperCase();
 
       if (cleanCode.length !== 6) {
-        setError(
-          "Enter a valid 6-character join code."
-        );
-
+        setError("Enter a valid 6-character join code.");
         return;
       }
 
-      console.log(
-        "🔑 Joining with code:",
-        cleanCode
-      );
-
-      const response = await fetch(
-        `${API_URL}/sessions/join`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            join_code: cleanCode,
-          }),
-        }
-      );
-
+      const response = await fetch(`${API_URL}/sessions/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ join_code: cleanCode }),
+      });
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.detail ||
-          "Could not join session."
-        );
+        throw new Error(data.detail || "Could not join session.");
       }
 
       setSessionId(data.session_id);
-
-      setParticipantId(
-        data.participant_id
-      );
-
+      setParticipantId(data.participant_id);
       setSessionCode(cleanCode);
-
       setIsCreator(false);
-
-      if (data.challenge) {
-        setChallenge(data.challenge);
-      }
-
+      if (data.challenge) setChallenge(data.challenge);
       setScreen("waiting");
     } catch (err) {
       console.error(err);
-
-      setError(
-        err.message ||
-        "Could not join session."
-      );
+      setError(err.message || "Could not join session.");
     }
   }
 
+  function copyCode() {
+    navigator.clipboard?.writeText(sessionCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  }
+
   // ==================================================
-  // START LOCATION TRACKING
+  // LOCATION TRACKING
   // ==================================================
 
   function startLocationTracking() {
     if (!navigator.geolocation) {
-      setError(
-        "Geolocation is not supported by this browser."
-      );
-
+      setError("Geolocation is not supported by this browser.");
       return;
     }
+    if (watchIdRef.current !== null) return;
 
-    if (watchIdRef.current !== null) {
-      return;
-    }
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const location = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        };
 
-    watchIdRef.current =
-      navigator.geolocation.watchPosition(
-        (position) => {
-          const location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            accuracy:
-              position.coords.accuracy,
-          };
+        setMyLocation(location);
+        setMyStartLocation((start) => start || location);
+        setMyPath((path) => [...path, [location.lat, location.lng]]);
 
-          // ------------------------------------------
-          // MY CURRENT LOCATION
-          // ------------------------------------------
-
-          setMyLocation(location);
-
-          // ------------------------------------------
-          // MY START LOCATION
-          // ------------------------------------------
-
-          setMyStartLocation(
-            (currentStart) => {
-              if (currentStart) {
-                return currentStart;
-              }
-
-              return location;
-            }
+        if (
+          socketRef.current &&
+          socketRef.current.readyState === WebSocket.OPEN
+        ) {
+          socketRef.current.send(
+            JSON.stringify({
+              type: "location",
+              lat: location.lat,
+              lng: location.lng,
+              accuracy: location.accuracy,
+            })
           );
-
-          // ------------------------------------------
-          // ADD TO MY PATH
-          // ------------------------------------------
-
-          setMyPath(
-            (currentPath) => [
-              ...currentPath,
-              [
-                location.lat,
-                location.lng,
-              ],
-            ]
-          );
-
-          // ------------------------------------------
-          // SEND LOCATION TO FRIEND
-          // ------------------------------------------
-
-          if (
-            socketRef.current &&
-            socketRef.current.readyState ===
-            WebSocket.OPEN
-          ) {
-            socketRef.current.send(
-              JSON.stringify({
-                type: "location",
-
-                lat: location.lat,
-
-                lng: location.lng,
-
-                accuracy:
-                  location.accuracy,
-              })
-            );
-          }
-        },
-
-        (geoError) => {
-          console.error(
-            "Geolocation error:",
-            geoError
-          );
-
-          if (geoError.code === 1) {
-            setError(
-              "Location permission was denied. Please allow location access."
-            );
-          } else {
-            setError(
-              "Could not get your current location."
-            );
-          }
-        },
-
-        {
-          enableHighAccuracy: true,
-          maximumAge: 5000,
-          timeout: 10000,
         }
-      );
+      },
+      (geoError) => {
+        console.error("Geolocation error:", geoError);
+        setError(
+          geoError.code === 1
+            ? "Location permission was denied. Please allow location access."
+            : "Could not get your current location."
+        );
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+    );
   }
-
-  // ==================================================
-  // STOP LOCATION TRACKING
-  // ==================================================
 
   function stopLocationTracking() {
     if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(
-        watchIdRef.current
-      );
-
+      navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
   }
 
   // ==================================================
   // ROUTE GENERATION
-  //
-  // QWEN RUNS LOCALLY IN CREATOR'S BROWSER.
-  // FASTAPI ONLY RECEIVES THE SPATIAL PLAN.
+  // Qwen runs locally in the creator's browser.
+  // FastAPI only receives the spatial plan.
   // ==================================================
 
   useEffect(() => {
-    if (screen !== "session") {
+    if (screen !== "session") return;
+    if (!isCreator) return;
+    if (!myLocation || !friendLocation) return;
+    if (!challenge) return;
+    if (routeRequestedRef.current) return;
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN)
       return;
-    }
-
-    if (!isCreator) {
-      return;
-    }
-
-    if (!myLocation || !friendLocation) {
-      return;
-    }
-
-    if (!challenge) {
-      return;
-    }
-
-    if (routeRequestedRef.current) {
-      return;
-    }
-
-    if (
-      !socketRef.current ||
-      socketRef.current.readyState !==
-      WebSocket.OPEN
-    ) {
-      return;
-    }
 
     routeRequestedRef.current = true;
 
@@ -702,400 +478,145 @@ function App() {
         setRouteGenerating(true);
         setError("");
 
-        // ------------------------------------------
-        // 1. PLAYER LOCATIONS
-        // ------------------------------------------
+        const playerA = { lat: myLocation.lat, lng: myLocation.lng };
+        const playerB = { lat: friendLocation.lat, lng: friendLocation.lng };
 
-        const playerA = {
-          lat: myLocation.lat,
-          lng: myLocation.lng,
-        };
-
-        const playerB = {
-          lat: friendLocation.lat,
-          lng: friendLocation.lng,
-        };
-
-        // ------------------------------------------
-        // 2. RUN QWEN LOCALLY
-        // ------------------------------------------
-
-        console.log(
-          "🤖 Generating spatial plan locally..."
-        );
-
-        const spatialPlan =
-          await generateSpatialPlanWithQwen({
-            prompt: challenge.prompt,
-
-            travelMode:
-              challenge.mode,
-
-            maxDistanceKm:
-              challenge.maxDistanceKm,
-
-            maxTimeMinutes:
-              challenge.maxTimeMinutes,
-
-            onProgress: (progress) => {
-              if (
-                progress?.status ===
-                "progress"
-              ) {
-                console.log(
-                  `🤖 Loading Qwen: ${Math.round(
-                    progress.progress || 0
-                  )}%`
-                );
-              }
-            },
-          });
-
-        console.log(
-          "🧠 Qwen spatial plan:",
-          spatialPlan
-        );
-
-        // ------------------------------------------
-        // 3. MAKE SURE WEBSOCKET IS STILL OPEN
-        // ------------------------------------------
+        const spatialPlan = await generateSpatialPlanWithQwen({
+          prompt: challenge.prompt,
+          travelMode: challenge.mode,
+          maxDistanceKm: challenge.maxDistanceKm,
+          maxTimeMinutes: challenge.maxTimeMinutes,
+          onProgress: (progress) => {
+            if (progress?.status === "progress") {
+              console.log(
+                `Loading Qwen: ${Math.round(progress.progress || 0)}%`
+              );
+            }
+          },
+        });
 
         if (
           !socketRef.current ||
-          socketRef.current.readyState !==
-          WebSocket.OPEN
+          socketRef.current.readyState !== WebSocket.OPEN
         ) {
-          throw new Error(
-            "WebSocket disconnected before route generation."
-          );
+          throw new Error("WebSocket disconnected before route generation.");
         }
-
-        // ------------------------------------------
-        // 4. SEND SPATIAL PLAN TO FASTAPI
-        // ------------------------------------------
 
         socketRef.current.send(
           JSON.stringify({
             type: "generate_route",
-
-            players: [
-              playerA,
-              playerB,
-            ],
-
-            spatial_plan:
-              spatialPlan,
+            players: [playerA, playerB],
+            spatial_plan: spatialPlan,
           })
         );
-
-        console.log(
-          "🗺️ Spatial plan sent to backend."
-        );
       } catch (err) {
-        console.error(
-          "❌ Route generation failed:",
-          err
-        );
-
-        setError(
-          err?.message ||
-          "Could not generate route."
-        );
-
+        console.error("Route generation failed:", err);
+        setError(err?.message || "Could not generate route.");
         setRouteGenerating(false);
-
-        // Allow retry
-        routeRequestedRef.current = false;
+        routeRequestedRef.current = false; // allow retry
       }
     }
 
     generateRoute();
-  }, [
-    screen,
-    isCreator,
-    myLocation,
-    friendLocation,
-    challenge,
-    routeAttempt,
-  ]);
+  }, [screen, isCreator, myLocation, friendLocation, challenge, routeAttempt]);
 
   // ==================================================
   // WEBSOCKET
   // ==================================================
 
   useEffect(() => {
-    if (!sessionId || !participantId) {
-      return;
-    }
+    if (!sessionId || !participantId) return;
 
-    const socket = new WebSocket(
-      `${WS_URL}/ws/${sessionId}/${participantId}`
-    );
-
+    const socket = new WebSocket(`${WS_URL}/ws/${sessionId}/${participantId}`);
     socketRef.current = socket;
 
     socket.onopen = () => {
-      console.log(
-        "WebSocket connected."
-      );
-
       if (pendingChallengeRef.current) {
         socket.send(
           JSON.stringify({
             type: "challenge_created",
-
-            challenge:
-              pendingChallengeRef.current,
+            challenge: pendingChallengeRef.current,
           })
         );
-
-        pendingChallengeRef.current =
-          null;
+        pendingChallengeRef.current = null;
       }
     };
 
     socket.onmessage = (event) => {
       try {
-        const message =
-          JSON.parse(event.data);
+        const message = JSON.parse(event.data);
 
-        console.log(
-          "📨 Received:",
-          message
-        );
-
-        // ------------------------------------------
-        // SESSION STATE
-        // ------------------------------------------
-
-        if (
-          message.type ===
-          "session_state"
-        ) {
-          setParticipantCount(
-            message.participant_count ||
-            0
-          );
-
-          if (message.challenge) {
-            setChallenge(
-              message.challenge
-            );
-          }
-
-          if (message.started) {
-            beginChallenge(
-              message.challenge
-            );
-          }
-
+        if (message.type === "session_state") {
+          setParticipantCount(message.participant_count || 0);
+          if (message.challenge) setChallenge(message.challenge);
+          if (message.started) beginChallenge(message.challenge);
           return;
         }
 
-        // ------------------------------------------
-        // PARTICIPANT COUNT
-        // ------------------------------------------
-
-        if (
-          message.type ===
-          "participant_count"
-        ) {
-          setParticipantCount(
-            message.count || 0
-          );
-
+        if (message.type === "participant_count") {
+          setParticipantCount(message.count || 0);
           return;
         }
 
-        // ------------------------------------------
-        // CHALLENGE CREATED
-        // ------------------------------------------
-
-        if (
-          message.type ===
-          "challenge_created"
-        ) {
-          setChallenge(
-            message.challenge
-          );
-
+        if (message.type === "challenge_created") {
+          setChallenge(message.challenge);
           return;
         }
 
-        // ------------------------------------------
-        // CHALLENGE STARTED
-        // ------------------------------------------
-
-        if (
-          message.type ===
-          "challenge_started"
-        ) {
-          beginChallenge(
-            message.challenge
-          );
-
+        if (message.type === "challenge_started") {
+          beginChallenge(message.challenge);
           return;
         }
 
-        // ------------------------------------------
-        // FRIEND LOCATION
-        // ------------------------------------------
-
-        if (
-          message.type ===
-          "location"
-        ) {
+        if (message.type === "location") {
           const location = {
             lat: message.lat,
             lng: message.lng,
-            accuracy:
-              message.accuracy,
+            accuracy: message.accuracy,
           };
-
-          setFriendLocation(
-            location
-          );
-
-          setFriendStartLocation(
-            (currentStart) => {
-              if (currentStart) {
-                return currentStart;
-              }
-
-              return location;
-            }
-          );
-
-          setFriendPath(
-            (currentPath) => [
-              ...currentPath,
-              [
-                location.lat,
-                location.lng,
-              ],
-            ]
-          );
-
+          setFriendLocation(location);
+          setFriendStartLocation((start) => start || location);
+          setFriendPath((path) => [...path, [location.lat, location.lng]]);
           return;
         }
 
-        // ------------------------------------------
-        // ROUTE CREATED
-        // ------------------------------------------
-
-        if (
-          message.type ===
-          "route_created"
-        ) {
-          console.log(
-            "🗺️ BOTH routes received:",
-            message.route
-          );
-
-          console.log(
-            "👤 Player A route:",
-            message.route?.player_a
-          );
-
-          console.log(
-            "👤 Player B route:",
-            message.route?.player_b
-          );
-
-          setPlannedRoute(
-            message.route
-          );
-
+        if (message.type === "route_created") {
+          setPlannedRoute(message.route);
           setRouteGenerating(false);
-
           setRoutesReady(true);
 
           // Timer starts once both routes are ready
           setElapsedSeconds(0);
-
-          setChallengeStartedAt(
-            Date.now()
-          );
-
-          // Reset checkpoints
+          setChallengeStartedAt(Date.now());
           setCheckpointState({
             activeIndex: 1,
             completed: {},
             times: {},
             finished: false,
           });
-
           setDistanceToCheckpoint(null);
-
           return;
         }
 
-        // ------------------------------------------
-        // FRIEND LEFT
-        // ------------------------------------------
-
-        if (
-          message.type ===
-          "participant_left"
-        ) {
-          setParticipantCount(
-            (count) =>
-              Math.max(
-                0,
-                count - 1
-              )
-          );
-
+        if (message.type === "participant_left") {
+          setParticipantCount((count) => Math.max(0, count - 1));
           setFriendLocation(null);
-
           return;
         }
 
-        // ------------------------------------------
-        // ERROR
-        // ------------------------------------------
-
-        if (
-          message.type ===
-          "error"
-        ) {
-          console.error(
-            "Server error:",
-            message.message
-          );
-
-          setError(
-            message.message ||
-            "Something went wrong."
-          );
-
+        if (message.type === "error") {
+          console.error("Server error:", message.message);
+          setError(message.message || "Something went wrong.");
           setRouteGenerating(false);
-
-          routeRequestedRef.current =
-            false;
-
-          return;
+          routeRequestedRef.current = false;
         }
       } catch (err) {
-        console.error(
-          "WebSocket message error:",
-          err
-        );
+        console.error("WebSocket message error:", err);
       }
     };
 
-    socket.onerror = (event) => {
-      console.error(
-        "WebSocket error:",
-        event
-      );
-    };
-
-    socket.onclose = () => {
-      console.log(
-        "WebSocket disconnected."
-      );
-    };
+    socket.onerror = (event) => console.error("WebSocket error:", event);
+    socket.onclose = () => console.log("WebSocket disconnected.");
 
     return () => {
       socket.close();
@@ -1104,100 +625,55 @@ function App() {
   }, [sessionId, participantId]);
 
   // ==================================================
-  // CREATE CHALLENGE
+  // CREATE / START CHALLENGE
   // ==================================================
 
   function createChallenge() {
     setError("");
-
-    const cleanPrompt =
-      challengePrompt.trim();
+    const cleanPrompt = challengePrompt.trim();
 
     if (!cleanPrompt) {
-      setError(
-        "Tell us what you want to draw."
-      );
-
+      setError("Tell us what you want to draw.");
       return;
     }
 
     const newChallenge = {
       prompt: cleanPrompt,
-
       mode: travelMode,
-
-      maxDistanceKm:
-        Number(maxDistance),
-
-      maxTimeMinutes:
-        Number(maxTime),
-
+      maxDistanceKm: Number(maxDistance),
+      maxTimeMinutes: Number(maxTime),
       gameMode: GAME_MODE,
     };
 
     resetChallengeTracking();
-
     setChallenge(newChallenge);
 
-    if (
-      socketRef.current &&
-      socketRef.current.readyState ===
-      WebSocket.OPEN
-    ) {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
-        JSON.stringify({
-          type: "challenge_created",
-
-          challenge:
-            newChallenge,
-        })
+        JSON.stringify({ type: "challenge_created", challenge: newChallenge })
       );
     } else {
-      pendingChallengeRef.current =
-        newChallenge;
+      pendingChallengeRef.current = newChallenge;
     }
   }
-
-  // ==================================================
-  // START CHALLENGE
-  // ==================================================
 
   function startChallenge() {
     setError("");
 
     if (!challenge) {
-      setError(
-        "Create a challenge first."
-      );
-
+      setError("Create a challenge first.");
       return;
     }
-
     if (participantCount < 2) {
-      setError(
-        "Waiting for your friend to join."
-      );
-
+      setError("Waiting for your friend to join.");
+      return;
+    }
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      setError("Connection is not ready yet.");
       return;
     }
 
-    if (
-      !socketRef.current ||
-      socketRef.current.readyState !==
-      WebSocket.OPEN
-    ) {
-      setError(
-        "Connection is not ready yet."
-      );
-
-      return;
-    }
-
-    socketRef.current.send(
-      JSON.stringify({
-        type: "start_challenge",
-      })
-    );
+    socketRef.current.send(JSON.stringify({ type: "start_challenge" }));
   }
 
   // ==================================================
@@ -1207,50 +683,57 @@ function App() {
   if (screen === "home") {
     return (
       <div className="app">
-        <div className="home-container">
-          <h1>SyncWalk</h1>
+        <Blobs />
 
-          <p>
-            Turn a walk with your friend
-            into a real-world drawing
-            challenge.
-          </p>
+        <main className="home">
+          <section className="hero">
+            <Logo />
+            <h1>Walk a drawing into the map.</h1>
+            <p>
+              Turn a walk with your friend into a real-world drawing challenge.
+              Pick a shape, set off from your own doorsteps, and watch both
+              routes appear live.
+            </p>
+          </section>
 
-          {error && (
-            <div className="error">
-              {error}
+          <section className="panel">
+            {error && <div className="error">{error}</div>}
+
+            <div className="panel-block">
+              <h2>Start a new walk</h2>
+              <p className="muted">You will get a code to share with a friend.</p>
+              <button className="btn primary" onClick={createSession}>
+                <Plus size={18} /> Create a session
+              </button>
             </div>
-          )}
 
-          <button
-            onClick={createSession}
-          >
-            Create a Session
-          </button>
+            <div className="divider">
+              <span>or</span>
+            </div>
 
-          <div className="divider">
-            or
-          </div>
+            <div className="panel-block">
+              <h2>Join a friend</h2>
+              <p className="muted">Enter the 6-character code they shared.</p>
+              <div className="join-row">
+                <input
+                  className="code-input"
+                  type="text"
+                  placeholder="ABC123"
+                  aria-label="Join code"
+                  value={joinCode}
+                  maxLength={6}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === "Enter" && joinSession()}
+                />
+                <button className="btn mint" onClick={joinSession}>
+                  <LogIn size={18} /> Join
+                </button>
+              </div>
+            </div>
+          </section>
+        </main>
 
-          <input
-            type="text"
-            placeholder="Enter join code"
-            value={joinCode}
-            onChange={(event) =>
-              setJoinCode(
-                event.target.value
-                  .toUpperCase()
-              )
-            }
-            maxLength={6}
-          />
-
-          <button
-            onClick={joinSession}
-          >
-            Join Session
-          </button>
-        </div>
+        <WalkingFigure />
       </div>
     );
   }
@@ -1262,259 +745,139 @@ function App() {
   if (screen === "waiting") {
     return (
       <div className="app">
-        <div className="waiting-container">
-          <h1>SyncWalk</h1>
+        <Blobs />
 
-          <p>
-            Session code
-          </p>
+        <main className="wait">
+          <aside className="panel code-panel">
+            <Logo small />
+            <p className="muted">Share this code with your friend</p>
 
-          <div className="session-code">
-            {sessionCode}
-          </div>
+            <button className="code" onClick={copyCode} aria-label="Copy code">
+              {sessionCode}
+              {copied ? <Check size={22} /> : <Copy size={22} />}
+            </button>
 
-          <p>
-            Players: {participantCount}/2
-          </p>
-
-          {error && (
-            <div className="error">
-              {error}
+            <div className="players">
+              <span className={`avatar ${participantCount >= 1 ? "on" : ""}`}>
+                <Users size={18} />
+              </span>
+              <span className={`avatar f ${participantCount >= 2 ? "on" : ""}`}>
+                <Users size={18} />
+              </span>
+              <span className="muted">{participantCount}/2 joined</span>
             </div>
-          )}
+          </aside>
 
-          {/* CREATOR - NO CHALLENGE */}
+          <section className="panel main-panel">
+            {error && <div className="error">{error}</div>}
 
-          {isCreator &&
-            !challenge && (
+            {isCreator && !challenge && (
               <div className="challenge-form">
-                <h2>
-                  Create your challenge
-                </h2>
+                <h2>Create your challenge</h2>
 
-                <input
-                  type="text"
-                  placeholder='Example: "I want to draw a star"'
-                  value={challengePrompt}
-                  onChange={(event) =>
-                    setChallengePrompt(
-                      event.target.value
-                    )
-                  }
-                />
-
-                <label>
-                  Travel mode
+                <label className="field">
+                  <span>What do you want to draw?</span>
+                  <input
+                    type="text"
+                    placeholder="A star, a heart, a cat"
+                    value={challengePrompt}
+                    onChange={(e) => setChallengePrompt(e.target.value)}
+                  />
                 </label>
 
-                <select
-                  value={travelMode}
-                  onChange={(event) =>
-                    setTravelMode(
-                      event.target.value
-                    )
-                  }
-                >
-                  <option value="walking">
-                    Walking
-                  </option>
+                <div className="field">
+                  <span>Travel mode</span>
+                  <div className="seg">
+                    <button
+                      type="button"
+                      className={travelMode === "walking" ? "on" : ""}
+                      onClick={() => setTravelMode("walking")}
+                    >
+                      <Footprints size={17} /> Walking
+                    </button>
+                    <button
+                      type="button"
+                      className={travelMode === "cycling" ? "on" : ""}
+                      onClick={() => setTravelMode("cycling")}
+                    >
+                      <Bike size={17} /> Cycling
+                    </button>
+                  </div>
+                </div>
 
-                  <option value="cycling">
-                    Cycling
-                  </option>
-                </select>
+                <div className="field-row">
+                  <label className="field">
+                    <span>Max distance</span>
+                    <div className="unit">
+                      <input
+                        type="number"
+                        min="1"
+                        max="50"
+                        value={maxDistance}
+                        onChange={(e) => setMaxDistance(e.target.value)}
+                      />
+                      <em>km</em>
+                    </div>
+                  </label>
 
-                <label>
-                  Maximum distance (km)
-                </label>
+                  <label className="field">
+                    <span>Max time</span>
+                    <div className="unit">
+                      <input
+                        type="number"
+                        min="1"
+                        max="180"
+                        value={maxTime}
+                        onChange={(e) => setMaxTime(e.target.value)}
+                      />
+                      <em>min</em>
+                    </div>
+                  </label>
+                </div>
 
-                <input
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={maxDistance}
-                  onChange={(event) =>
-                    setMaxDistance(
-                      event.target.value
-                    )
-                  }
-                />
-
-                <label>
-                  Maximum time (minutes)
-                </label>
-
-                <input
-                  type="number"
-                  min="1"
-                  max="180"
-                  value={maxTime}
-                  onChange={(event) =>
-                    setMaxTime(
-                      event.target.value
-                    )
-                  }
-                />
-
-                <button
-                  onClick={
-                    createChallenge
-                  }
-                >
-                  Create Challenge
+                <button className="btn primary" onClick={createChallenge}>
+                  <Sparkles size={18} /> Create challenge
                 </button>
               </div>
             )}
 
-          {/* CREATOR - CHALLENGE READY */}
-
-          {isCreator &&
-            challenge && (
+            {challenge && (
               <div className="challenge-preview">
-                <h2>
-                  Challenge Ready 🎯
-                </h2>
+                <ChallengeSummary challenge={challenge} isCreator={isCreator} />
 
-                <p>
-                  <strong>
-                    {challenge.prompt}
-                  </strong>
-                </p>
-
-                <p>
-                  🚶 Mode:{" "}
-                  {challenge.mode}
-                </p>
-
-                <p>
-                  📏 Max distance:{" "}
-                  {challenge.maxDistanceKm}{" "}
-                  km
-                </p>
-
-                <p>
-                  ⏱️ Max time:{" "}
-                  {challenge.maxTimeMinutes}{" "}
-                  minutes
-                </p>
-
-                <hr />
-
-                <p>
-                  🎮{" "}
-                  <strong>
-                    Individual Mode
-                  </strong>
-                </p>
-
-                <p>
-                  🏠 Start and finish at
-                  your own starting location.
-                </p>
-
-                <p>
-                  👣 You and your friend
-                  draw the same challenge
-                  independently.
-                </p>
-
-                <p>
-                  🗺️ Both paths will appear
-                  on the map.
-                </p>
-
-                {participantCount >= 2 ? (
-                  <button
-                    onClick={
-                      startChallenge
-                    }
-                  >
-                    Start Challenge
+                {isCreator && participantCount >= 2 && (
+                  <button className="btn primary" onClick={startChallenge}>
+                    <Play size={18} /> Start challenge
                   </button>
-                ) : (
-                  <p>
-                    Waiting for your friend
-                    to join...
+                )}
+
+                {isCreator && participantCount < 2 && (
+                  <p className="waiting-note">
+                    <Hourglass size={16} /> Waiting for your friend to join
+                  </p>
+                )}
+
+                {!isCreator && (
+                  <p className="waiting-note">
+                    <Hourglass size={16} /> Waiting for the creator to start
                   </p>
                 )}
               </div>
             )}
 
-          {/* FRIEND */}
+            {!isCreator && !challenge && (
+              <div className="challenge-preview empty">
+                <Hourglass size={28} />
+                <h2>Waiting for a challenge</h2>
+                <p className="muted">
+                  The session creator is choosing what to draw.
+                </p>
+              </div>
+            )}
+          </section>
+        </main>
 
-          {!isCreator && (
-            <div className="challenge-preview">
-              {!challenge && (
-                <>
-                  <h2>
-                    Waiting for challenge...
-                  </h2>
-
-                  <p>
-                    Ask the session creator
-                    to create the challenge.
-                  </p>
-                </>
-              )}
-
-              {challenge && (
-                <>
-                  <h2>
-                    Challenge Ready 🎯
-                  </h2>
-
-                  <p>
-                    <strong>
-                      {challenge.prompt}
-                    </strong>
-                  </p>
-
-                  <p>
-                    🚶 Mode:{" "}
-                    {challenge.mode}
-                  </p>
-
-                  <p>
-                    📏 Max distance:{" "}
-                    {challenge.maxDistanceKm}{" "}
-                    km
-                  </p>
-
-                  <p>
-                    ⏱️ Max time:{" "}
-                    {challenge.maxTimeMinutes}{" "}
-                    minutes
-                  </p>
-
-                  <hr />
-
-                  <p>
-                    🎮{" "}
-                    <strong>
-                      Individual Mode
-                    </strong>
-                  </p>
-
-                  <p>
-                    🏠 Start and finish at
-                    your own starting location.
-                  </p>
-
-                  <p>
-                    👣 Draw the challenge
-                    independently from your
-                    friend.
-                  </p>
-
-                  <p>
-                    Waiting for the creator
-                    to start...
-                  </p>
-                </>
-              )}
-            </div>
-          )}
-        </div>
+        <WalkingFigure />
       </div>
     );
   }
@@ -1523,608 +886,311 @@ function App() {
   // SESSION / MAP SCREEN
   // ==================================================
 
-  const myPlannedRoute = isCreator
-    ? plannedRoute?.player_a
-    : plannedRoute?.player_b;
-
-  const friendPlannedRoute = isCreator
-    ? plannedRoute?.player_b
-    : plannedRoute?.player_a;
+  const total = checkpointWaypoints.length;
+  const showLoader = !routesReady && !error;
+  const loaderTitle =
+    !myLocation || !friendLocation
+      ? "Finding you both"
+      : isCreator
+        ? "Planning your route"
+        : "Waiting for the route";
+  const loaderText =
+    !myLocation || !friendLocation
+      ? "Waiting for both locations to come through."
+      : isCreator
+        ? "Your browser is running Qwen locally. The first run may take a little longer."
+        : "Your friend's device is drawing the plan.";
 
   return (
-    <div className="app">
+    <div className="app session-app">
+      <Blobs />
 
-      {/* HEADER */}
+      <header className="topbar">
+        <Logo small />
 
-      <div className="session-header">
-        <div>
-          <h1>
-            SyncWalk
-          </h1>
-
-          <span>
-            Session: {sessionCode}
+        <div className="topbar-right">
+          <span className="pill">Code {sessionCode}</span>
+          <span className="pill">
+            <Users size={15} /> {participantCount}/2
+          </span>
+          <span className="pill timer">
+            <Timer size={15} />
+            {formatTime(elapsedSeconds)}
+            {challenge && (
+              <small> / {formatTime(Number(challenge.maxTimeMinutes) * 60)}</small>
+            )}
           </span>
         </div>
-
-        <div>
-          <span>
-            👥 {participantCount}/2
-          </span>
-        </div>
-      </div>
-
-      {/* CHALLENGE INFO */}
+      </header>
 
       {challenge && (
-        <div className="challenge-bar">
-          <div>
-            🎯 {challenge.prompt}
-          </div>
-
-          <div>
-            🎮 Individual
-          </div>
-
-          <div>
-            {challenge.mode ===
-              "walking"
-              ? "🚶 Walking"
-              : "🚴 Cycling"}
-          </div>
-
-          <div>
-            📏{" "}
-            {challenge.maxDistanceKm}{" "}
-            km
-          </div>
-        </div>
-      )}
-
-      {/* TIMER */}
-
-      <div className="challenge-timer">
-        <span>
-          ⏱️{" "}
-          {formatTime(
-            elapsedSeconds
-          )}
-        </span>
-
-        {challenge && (
-          <span>
-            {" "}
-            /{" "}
-            {formatTime(
-              Number(
-                challenge.maxTimeMinutes
-              ) * 60
-            )}
+        <div className="chips">
+          <span className="chip lav strong">
+            <Target size={15} /> {challenge.prompt}
           </span>
-        )}
-      </div>
-
-      {/* ROUTE GENERATING */}
-
-      {routeGenerating && (
-        <div className="route-generating">
-          🤖 AI is planning your route
-          locally...
-          <br />
-
-          <small>
-            Your browser is running Qwen
-            locally. The first run may
-            take a little longer.
-          </small>
+          <span className="chip butter">Individual</span>
+          <span className="chip mint">
+            {challenge.mode === "walking" ? (
+              <Footprints size={15} />
+            ) : (
+              <Bike size={15} />
+            )}
+            {challenge.mode === "walking" ? "Walking" : "Cycling"}
+          </span>
+          <span className="chip peach">
+            <Ruler size={15} /> {challenge.maxDistanceKm} km
+          </span>
         </div>
       )}
 
-      {/* MAP */}
-
-      <MapContainer
-        center={[
-          20.5937,
-          78.9629,
-        ]}
-        zoom={5}
-        style={{
-          height: "70vh",
-          width: "100%",
-        }}
-      >
-        <TileLayer
-          attribution="&copy; OpenStreetMap contributors"
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-
-        <MapController
-          myLocation={myLocation}
-          friendLocation={
-            friendLocation
-          }
-        />
-
-        {/* MY MARKER */}
-
-        {myLocation && (
-          <Marker
-            position={[
-              myLocation.lat,
-              myLocation.lng,
-            ]}
-          >
-            <Popup>
-              <strong>
-                You
-              </strong>
-
-              <br />
-
-              Accuracy:{" "}
-              {Math.round(
-                myLocation.accuracy ||
-                0
-              )}
-              m
-            </Popup>
-          </Marker>
-        )}
-
-        {/* FRIEND MARKER */}
-
-        {friendLocation && (
-          <Marker
-            position={[
-              friendLocation.lat,
-              friendLocation.lng,
-            ]}
-          >
-            <Popup>
-              <strong>
-                Your Friend
-              </strong>
-
-              <br />
-
-              Accuracy:{" "}
-              {Math.round(
-                friendLocation.accuracy ||
-                0
-              )}
-              m
-            </Popup>
-          </Marker>
-        )}
-
-        {/* MY START */}
-
-        {myStartLocation && (
-          <CircleMarker
-            center={[
-              myStartLocation.lat,
-              myStartLocation.lng,
-            ]}
-            radius={8}
-            pathOptions={{
-              color: "#6C63FF",
-              fillColor: "#6C63FF",
-              fillOpacity: 0.8,
-            }}
-          >
-            <Popup>
-              🏠 Your starting point
-            </Popup>
-          </CircleMarker>
-        )}
-
-        {/* FRIEND START */}
-
-        {friendStartLocation && (
-          <CircleMarker
-            center={[
-              friendStartLocation.lat,
-              friendStartLocation.lng,
-            ]}
-            radius={8}
-            pathOptions={{
-              color: "#F59E0B",
-              fillColor: "#F59E0B",
-              fillOpacity: 0.8,
-            }}
-          >
-            <Popup>
-              🏠 Friend's starting point
-            </Popup>
-          </CircleMarker>
-        )}
-
-        {/* MY ACTUAL PATH */}
-
-        {myPath.length >= 2 && (
-          <Polyline
-            positions={myPath}
-            pathOptions={{
-              color: "#6C63FF",
-              weight: 5,
-              opacity: 0.85,
-            }}
-          />
-        )}
-
-        {/* FRIEND ACTUAL PATH */}
-
-        {friendPath.length >= 2 && (
-          <Polyline
-            positions={friendPath}
-            pathOptions={{
-              color: "#F59E0B",
-              weight: 5,
-              opacity: 0.85,
-            }}
-          />
-        )}
-
-        {/* MY PLANNED ROUTE */}
-
-        {myPlannedRoute?.points
-          ?.length > 1 && (
-            <Polyline
-              positions={
-                myPlannedRoute.points
-              }
-              pathOptions={{
-                color: "#6C63FF",
-                weight: 7,
-                opacity: 0.35,
-              }}
+      <div className="session-grid">
+        <div className="map-wrap">
+          <MapContainer className="map" center={[20.5937, 78.9629]} zoom={5}>
+            <TileLayer
+              attribution="&copy; OpenStreetMap contributors"
+              url={TILES}
             />
-          )}
 
-        {/* FRIEND PLANNED ROUTE */}
-
-        {friendPlannedRoute?.points
-          ?.length > 1 && (
-            <Polyline
-              positions={
-                friendPlannedRoute.points
-              }
-              pathOptions={{
-                color: "#F59E0B",
-                weight: 7,
-                opacity: 0.35,
-              }}
+            <MapController
+              myLocation={myLocation}
+              friendLocation={friendLocation}
             />
-          )}
 
-        {/* CHECKPOINT MARKERS */}
-
-        {checkpointWaypoints.map(
-          (point, index) => {
-            // Don't show starting point
-            // as a checkpoint.
-            if (index === 0) {
-              return null;
-            }
-
-            const [lat, lng] = point;
-
-            const completed =
-              checkpointState
-                .completed[index];
-
-            const active =
-              checkpointState
-                .activeIndex ===
-              index;
-
-            return (
+            {myLocation && (
               <Marker
-                key={`checkpoint-${index}`}
-                position={[
-                  lat,
-                  lng,
-                ]}
+                position={[myLocation.lat, myLocation.lng]}
+                icon={pin("me")}
               >
                 <Popup>
-                  <div
-                    style={{
-                      textAlign:
-                        "center",
-                      minWidth:
-                        "150px",
-                    }}
-                  >
-                    <strong>
-                      {index ===
-                        checkpointWaypoints.length -
-                        1
-                        ? "🏁 FINISH"
-                        : `🎯 CHECKPOINT ${String.fromCharCode(
-                          64 + index
-                        )}`}
-                    </strong>
-
-                    <br />
-
-                    {completed ? (
-                      <span>
-                        ✅ Completed
-                        <br />
-                        ⏱{" "}
-                        {formatCheckpointTime(
-                          checkpointState
-                            .times[
-                          index
-                          ]
-                        )}
-                      </span>
-                    ) : active ? (
-                      <span>
-                        📍 Next
-                        checkpoint
-                      </span>
-                    ) : (
-                      <span>
-                        🔒 Locked
-                      </span>
-                    )}
-                  </div>
+                  <strong>You</strong>
+                  <br />
+                  Accuracy: {Math.round(myLocation.accuracy || 0)}m
                 </Popup>
               </Marker>
-            );
-          }
-        )}
-      </MapContainer>
+            )}
 
-      {/* ROUTE INFO */}
+            {friendLocation && (
+              <Marker
+                position={[friendLocation.lat, friendLocation.lng]}
+                icon={pin("friend")}
+              >
+                <Popup>
+                  <strong>Your friend</strong>
+                  <br />
+                  Accuracy: {Math.round(friendLocation.accuracy || 0)}m
+                </Popup>
+              </Marker>
+            )}
 
-      {plannedRoute && (
-        <div className="route-info">
-          <div>
-            🧠 AI shape:{" "}
-            {
-              plannedRoute
-                ?.spatial_plan
-                ?.shape_name
-            }
-          </div>
-
-          <div>
-            🗺️ Your route:{" "}
-            {
-              myPlannedRoute
-                ?.distance_km
-            }{" "}
-            km
-          </div>
-
-          <div>
-            🗺️ Friend route:{" "}
-            {
-              friendPlannedRoute
-                ?.distance_km
-            }{" "}
-            km
-          </div>
-        </div>
-      )}
-
-      {/* CHECKPOINT STATUS */}
-
-      {checkpointWaypoints.length >
-        1 && (
-          <div
-            style={{
-              marginTop: "12px",
-              padding: "14px",
-              borderRadius: "14px",
-              background: "#f8f9ff",
-              border:
-                "1px solid #e4e7f5",
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: "16px",
-                marginBottom: "10px",
-              }}
-            >
-              🎯 Challenge Checkpoints
-            </div>
-
-            {checkpointWaypoints
-              .slice(1)
-              .map((_, i) => {
-                const index = i + 1;
-
-                const completed =
-                  checkpointState
-                    .completed[index];
-
-                const active =
-                  checkpointState
-                    .activeIndex ===
-                  index;
-
-                const label =
-                  index ===
-                    checkpointWaypoints.length -
-                    1
-                    ? "🏁 Finish"
-                    : `🔵 Checkpoint ${String.fromCharCode(
-                      64 + index
-                    )}`;
-
-                return (
-                  <div
-                    key={`checkpoint-status-${index}`}
-                    style={{
-                      display: "flex",
-                      alignItems:
-                        "center",
-                      justifyContent:
-                        "space-between",
-                      padding: "8px 0",
-                      borderBottom:
-                        index <
-                          checkpointWaypoints.length -
-                          1
-                          ? "1px solid #eee"
-                          : "none",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontWeight:
-                            active ||
-                              completed
-                              ? 600
-                              : 400,
-                        }}
-                      >
-                        {completed
-                          ? "✅"
-                          : active
-                            ? "📍"
-                            : "🔒"}{" "}
-                        {label}
-                      </div>
-
-                      {completed && (
-                        <div
-                          style={{
-                            fontSize:
-                              "12px",
-                            color:
-                              "#666",
-                            marginTop:
-                              "2px",
-                          }}
-                        >
-                          ⏱{" "}
-                          {formatCheckpointTime(
-                            checkpointState
-                              .times[
-                            index
-                            ]
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {active &&
-                      !completed && (
-                        <span
-                          style={{
-                            fontSize:
-                              "12px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {distanceToCheckpoint !==
-                            null
-                            ? `${distanceToCheckpoint} m away`
-                            : "Locating..."}
-                        </span>
-                      )}
-                  </div>
-                );
-              })}
-
-            {/* CHECK IN BUTTON */}
-
-            {!checkpointState.finished &&
-              activeCheckpoint &&
-              isNearCheckpoint && (
-                <button
-                  type="button"
-                  onClick={
-                    handleCheckpointCheckIn
-                  }
-                  style={{
-                    width: "100%",
-                    marginTop:
-                      "12px",
-                    padding: "12px",
-                    border: "none",
-                    borderRadius:
-                      "10px",
-                    cursor:
-                      "pointer",
-                    fontWeight: 700,
-                    fontSize:
-                      "15px",
-                  }}
-                >
-                  📍 CHECK IN
-                </button>
-              )}
-
-            {/* FINISHED */}
-
-            {checkpointState.finished && (
-              <div
-                style={{
-                  marginTop:
-                    "12px",
-                  padding: "12px",
-                  borderRadius:
-                    "10px",
-                  textAlign:
-                    "center",
-                  fontWeight: 700,
+            {myStartLocation && (
+              <CircleMarker
+                center={[myStartLocation.lat, myStartLocation.lng]}
+                radius={9}
+                pathOptions={{
+                  color: "#fff",
+                  weight: 3,
+                  fillColor: ME_COLOR,
+                  fillOpacity: 1,
                 }}
               >
-                🎉 Challenge Complete!
-              </div>
+                <Popup>Your starting point</Popup>
+              </CircleMarker>
             )}
-          </div>
-        )}
 
-      {/* STATUS */}
+            {friendStartLocation && (
+              <CircleMarker
+                center={[friendStartLocation.lat, friendStartLocation.lng]}
+                radius={9}
+                pathOptions={{
+                  color: "#fff",
+                  weight: 3,
+                  fillColor: FRIEND_COLOR,
+                  fillOpacity: 1,
+                }}
+              >
+                <Popup>Friend's starting point</Popup>
+              </CircleMarker>
+            )}
 
-      <div className="session-status">
-        <p>
-          📍 Your points:{" "}
-          {myPath.length}
-        </p>
+            {myPath.length >= 2 && (
+              <Polyline
+                positions={myPath}
+                pathOptions={{ color: ME_COLOR, weight: 5, opacity: 0.9 }}
+              />
+            )}
 
-        <p>
-          👥 Friend points:{" "}
-          {friendPath.length}
-        </p>
+            {friendPath.length >= 2 && (
+              <Polyline
+                positions={friendPath}
+                pathOptions={{ color: FRIEND_COLOR, weight: 5, opacity: 0.9 }}
+              />
+            )}
 
-        {myLocation ? (
-          <p>
-            🟢 Your location is being
-            shared
-          </p>
-        ) : (
-          <p>
-            🟡 Getting your location...
-          </p>
-        )}
+            {myPlannedRoute?.points?.length > 1 && (
+              <Polyline
+                positions={myPlannedRoute.points}
+                pathOptions={{ color: ME_COLOR, weight: 8, opacity: 0.28 }}
+              />
+            )}
 
-        {friendLocation ? (
-          <p>
-            🟢 Friend location received
-          </p>
-        ) : (
-          <p>
-            🟡 Waiting for friend's
-            location...
-          </p>
-        )}
+            {friendPlannedRoute?.points?.length > 1 && (
+              <Polyline
+                positions={friendPlannedRoute.points}
+                pathOptions={{ color: FRIEND_COLOR, weight: 8, opacity: 0.28 }}
+              />
+            )}
+
+            {checkpointWaypoints.map((point, index) => {
+              if (index === 0) return null; // start is not a checkpoint
+
+              const [lat, lng] = point;
+              const completed = checkpointState.completed[index];
+              const active = checkpointState.activeIndex === index;
+              const state = completed ? "done" : active ? "active" : "locked";
+
+              return (
+                <Marker
+                  key={`checkpoint-${index}`}
+                  position={[lat, lng]}
+                  icon={pin(state, cpLetter(index, total))}
+                >
+                  <Popup>
+                    <strong>{cpLabel(index, total)}</strong>
+                    <br />
+                    {completed
+                      ? `Completed at ${formatTime(checkpointState.times[index])}`
+                      : active
+                        ? "Next checkpoint"
+                        : "Locked"}
+                  </Popup>
+                </Marker>
+              );
+            })}
+          </MapContainer>
+
+          {showLoader && (
+            <div className="loading-overlay">
+              <div className="loading-card">
+                <WalkingFigure fixed={false} height={150} />
+                <h3>{loaderTitle}</h3>
+                <p className="muted">{loaderText}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <aside className="side">
+          {plannedRoute && (
+            <section className="card">
+              <h3>
+                <RouteIcon size={18} />
+                {plannedRoute?.spatial_plan?.shape_name || "Your route"}
+              </h3>
+              <div className="route-rows">
+                <div>
+                  <i className="dot me" /> Your route
+                  <b>{myPlannedRoute?.distance_km} km</b>
+                </div>
+                <div>
+                  <i className="dot friend" /> Friend's route
+                  <b>{friendPlannedRoute?.distance_km} km</b>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {total > 1 && (
+            <section className="card">
+              <h3>
+                <Flag size={18} /> Checkpoints
+              </h3>
+
+              <ul className="cp-list">
+                {checkpointWaypoints.slice(1).map((_, i) => {
+                  const index = i + 1;
+                  const completed = checkpointState.completed[index];
+                  const active = checkpointState.activeIndex === index;
+
+                  return (
+                    <li
+                      key={`cp-${index}`}
+                      className={completed ? "done" : active ? "active" : ""}
+                    >
+                      <span className="cp-icon">
+                        {completed ? (
+                          <CheckCircle2 size={20} />
+                        ) : active ? (
+                          <MapPin size={20} />
+                        ) : (
+                          <Lock size={18} />
+                        )}
+                      </span>
+
+                      <div>
+                        <strong>{cpLabel(index, total)}</strong>
+                        {completed && (
+                          <small>
+                            Reached at {formatTime(checkpointState.times[index])}
+                          </small>
+                        )}
+                      </div>
+
+                      {active && !completed && (
+                        <em>
+                          {distanceToCheckpoint !== null
+                            ? `${distanceToCheckpoint} m away`
+                            : "Locating..."}
+                        </em>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {!checkpointState.finished &&
+                activeCheckpoint &&
+                isNearCheckpoint && (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={handleCheckpointCheckIn}
+                  >
+                    <MapPin size={18} /> Check in
+                  </button>
+                )}
+
+              {checkpointState.finished && (
+                <div className="done-banner">
+                  <Trophy size={20} /> Challenge complete
+                </div>
+              )}
+            </section>
+          )}
+
+          <section className="card status">
+            <h3>
+              <Hourglass size={18} /> Live status
+            </h3>
+            <p>
+              <i className={`dot ${myLocation ? "ok" : "wait"}`} />
+              {myLocation
+                ? "Your location is being shared"
+                : "Getting your location"}
+            </p>
+            <p>
+              <i className={`dot ${friendLocation ? "ok" : "wait"}`} />
+              {friendLocation
+                ? "Friend location received"
+                : "Waiting for friend's location"}
+            </p>
+            <p className="muted">
+              Points recorded: you {myPath.length}, friend {friendPath.length}
+            </p>
+          </section>
+        </aside>
       </div>
 
-      {error && (
-        <div className="error">
-          {error}
-        </div>
-      )}
+      {error && <div className="error toast">{error}</div>}
     </div>
   );
 }
