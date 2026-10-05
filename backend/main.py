@@ -1050,9 +1050,7 @@ async def health_check():
 
 @app.post("/sessions")
 async def create_session():
-
     session_id = str(uuid.uuid4())
-
     join_code = create_unique_code()
 
     session = Session(
@@ -1062,12 +1060,17 @@ async def create_session():
 
     sessions[session_id] = session
 
+    print("🆕 SESSION CREATED")
+    print("   Session ID:", session_id)
+    print("   Join code:", join_code)
+    print("   Active sessions:", [
+        s.join_code for s in sessions.values()
+    ])
+
     return {
         "session_id": session_id,
         "join_code": join_code,
     }
-
-
 # -------------------------------------------------------
 # Join session
 # -------------------------------------------------------
