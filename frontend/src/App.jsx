@@ -340,7 +340,6 @@ function App() {
   // ==================================================
   // CREATE / JOIN SESSION
   // ==================================================
-
   async function createSession() {
     console.log("🟢 CREATE SESSION CLICKED");
     console.log("🌐 API_URL:", API_URL);
@@ -358,17 +357,22 @@ function App() {
       console.log("📥 Response received:", response.status);
       console.log("📥 Response URL:", response.url);
 
+      if (!response.ok) {
+        throw new Error(`Failed to create session (${response.status})`);
+      }
+
       const data = await response.json();
 
       console.log("📦 Session response:", data);
 
-      // keep your existing state logic here
-      // e.g.
-      // setSessionId(data.session_id);
-      // setJoinCode(data.join_code);
+      setSessionId(data.session_id);
+      setSessionCode(data.join_code);
+      setIsCreator(true);
+      setScreen("waiting");
 
     } catch (error) {
       console.error("❌ CREATE SESSION FAILED:", error);
+      setError(error?.message || "Could not create session.");
     }
   }
 
